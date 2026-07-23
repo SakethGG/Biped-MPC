@@ -1,0 +1,366 @@
+<mujoco model="mit_humanoid">
+  <!--
+    MuJoCo (MJCF) conversion of the MIT Humanoid, "Simple Foot" family
+    (each foot is a single box contact).
+
+    Covers BOTH humanoid_F_sf.urdf (full collision set, the default here) and
+    humanoid_R_sf.urdf (reduced: base, feet and hands only) -- those two URDFs
+    are identical apart from 8 limb collision cylinders, so a single flag in the
+    "collision_limb" default below switches between them. See that comment.
+    Note humanoid_gym's mit_humanoid_config.py loads the R variant.
+
+    Kinematics, inertias, joint axes, limits and effort limits are taken verbatim
+    from the URDF. Deviations are marked with [DEVIATION] comments below.
+
+    Units: SI (m, kg, rad). Meshes are millimetre STLs, hence scale="0.001".
+    Mirrored (right-side) links reuse the left-side STLs with a negative
+    y-scale, exactly as the URDF does.
+
+    Verified against the URDF: all 21 link poses, orientations, masses, COMs
+    and all 18 joint axes agree to machine precision; total mass 24.249612 kg.
+
+    [KNOWN UPSTREAM ISSUE - reproduced as-is, not fixed here]
+    The URDF's right-side inertia tensors are mirrored inconsistently: it
+    negates ixy and ixz (an x-mirror) while the geometry is mirrored in y (which
+    should negate ixy and iyz, leaving ixz alone). 15 products are affected,
+    making the right side ~1% inertially different from the left -- e.g. the
+    hip_yaw joint-space inertia is 0.016740 (L) vs 0.016984 (R) kg m^2. These
+    values are kept verbatim so this model matches the URDF used for training.
+    Negate iyz and restore the sign of ixz on the right-side links if you want a
+    truly symmetric robot.
+
+    [NUMERICAL NOTE]
+    shoulder_yaw is the lowest-inertia DOF (0.00114 kg m^2 joint-space). With an
+    explicit joint-space PD at dt=0.002 it goes unstable above kp ~ 25
+    (omega*dt = sqrt(kp/I)*dt must stay well under ~0.3). Either lower kp on the
+    arm joints, shrink the timestep, or -- best, if you know the real gear ratios
+    -- add rotor inertia via `armature` on each joint, as is done for the ankles.
+  -->
+
+  <compiler angle="radian" meshdir="../meshes" autolimits="true"/>
+
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10"/>
+
+  <size njmax="500" nconmax="200"/>
+
+  <default>
+    <!-- URDF specifies no joint damping/friction; kept at zero so the MJCF
+         matches the URDF. Tune here rather than per-joint. -->
+    <joint damping="0" armature="0" frictionloss="0"/>
+    <motor ctrllimited="true"/>
+
+    <default class="visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2" density="0"
+            material="metal"/>
+    </default>
+    <default class="collision">
+      <geom group="3" rgba="0.8 0.3 0.3 0.4" condim="3" friction="0.8 0.02 0.01"
+            density="0"/>
+      <!-- The 8 upper/lower leg and arm cylinders. These are the ONLY thing that
+           distinguishes humanoid_F_sf.urdf from humanoid_R_sf.urdf, which are
+           otherwise byte-for-byte equivalent in kinematics, inertia and limits.
+           Set contype="0" conaffinity="0" here to get the "R" (reduced) model
+           that humanoid_gym/envs/mit_humanoid/mit_humanoid_config.py loads. -->
+      <default class="collision_limb">
+        <geom contype="1" conaffinity="1"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0"
+             width="512" height="512"/>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.2 0.3 0.4"
+             rgb2="0.1 0.15 0.2" width="512" height="512"/>
+    <material name="grid" texture="grid" texrepeat="8 8" reflectance="0.1"/>
+    <material name="metal" rgba="0.75 0.75 0.75 1" specular="0.5" shininess="0.6"/>
+    <material name="actuator" rgba="0.05 0.05 0.05 1" specular="0.3" shininess="0.4"/>
+
+    <mesh name="torso" file="torso.stl" scale="0.001 0.001 0.001"/>
+
+    <mesh name="hip_yaw_l"    file="left_hip_yaw.stl"    scale="0.001  0.001 0.001"/>
+    <mesh name="hip_yaw_r"    file="left_hip_yaw.stl"    scale="0.001 -0.001 0.001"/>
+    <mesh name="hip_abad_l"   file="left_hip_abad.stl"   scale="0.001  0.001 0.001"/>
+    <mesh name="hip_abad_r"   file="left_hip_abad.stl"   scale="0.001 -0.001 0.001"/>
+    <mesh name="leg_upper_l"  file="left_leg_upper.stl"  scale="0.001  0.001 0.001"/>
+    <mesh name="leg_upper_r"  file="left_leg_upper.stl"  scale="0.001 -0.001 0.001"/>
+    <mesh name="leg_lower_l"  file="left_leg_lower.stl"  scale="0.001  0.001 0.001"/>
+    <mesh name="leg_lower_r"  file="left_leg_lower.stl"  scale="0.001 -0.001 0.001"/>
+    <mesh name="foot_l"       file="left_foot.stl"       scale="0.001  0.001 0.001"/>
+    <mesh name="foot_r"       file="left_foot.stl"       scale="0.001 -0.001 0.001"/>
+
+    <mesh name="shoulder1_l"  file="left_shoulder1.stl"  scale="0.001  0.001 0.001"/>
+    <mesh name="shoulder1_r"  file="left_shoulder1.stl"  scale="0.001 -0.001 0.001"/>
+    <mesh name="shoulder2_l"  file="left_shoulder2.stl"  scale="0.001  0.001 0.001"/>
+    <mesh name="shoulder2_r"  file="left_shoulder2.stl"  scale="0.001 -0.001 0.001"/>
+    <mesh name="shoulder3_l"  file="left_shoulder3.stl"  scale="0.001  0.001 0.001"/>
+    <mesh name="shoulder3_r"  file="left_shoulder3.stl"  scale="0.001 -0.001 0.001"/>
+    <mesh name="forearm_l"    file="left_forearm.stl"    scale="0.001  0.001 0.001"/>
+    <mesh name="forearm_r"    file="left_forearm.stl"    scale="0.001 -0.001 0.001"/>
+  </asset>
+
+  <worldbody>
+    <light name="spotlight" mode="targetbodycom" target="base" pos="0 -4 4"
+           cutoff="45" diffuse="0.8 0.8 0.8"/>
+    <geom name="floor" type="plane" size="0 0 0.05" material="grid"
+          condim="3" friction="0.8 0.02 0.01"/>
+
+    <body name="base" pos="0 0 0.6889" childclass="visual">
+      <freejoint name="root"/>
+      <inertial pos="0.009598 0.000935 0.151714" mass="7.954054"
+                fullinertia="0.168459 0.101358 0.091754 0.000124 0.006493 0.000278"/>
+      <geom mesh="torso"/>
+      <geom class="collision" name="torso_col" type="box" pos="0.023 0 0.08"
+            size="0.075 0.15 0.175"/>
+      <site name="imu" pos="0 0 0" size="0.01" rgba="1 0 0 1"/>
+
+      <!-- ================= LEFT LEG ================= -->
+      <body name="left_hip_yaw" pos="0 0.082 0" euler="0 -0.174533 0">
+        <inertial pos="-0.065362 -0.000128 -0.063947" mass="0.842752"
+                  fullinertia="0.001502 0.001361 0.001170 0.000004 0.000533 0"/>
+        <joint name="left_hip_yaw" axis="0 0 -1" range="-3 3"/>
+        <geom name="left_hip_yaw_act" type="cylinder" pos="0 0 0" size="0.045 0.035" material="actuator"/>
+        <geom mesh="hip_yaw_l"/>
+
+        <body name="left_hip_abad" pos="-0.06435 0 -0.07499" euler="0 0.436332 0">
+          <inertial pos="0.067579 -0.013035 0.000132" mass="1.199631"
+                    fullinertia="0.001745 0.003338 0.001951 0.000003 -0.000082 -0.000010"/>
+          <joint name="left_hip_abad" axis="1 0 0" range="-3 3"/>
+          <geom name="left_hip_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.045 0.045" material="actuator"/>
+          <geom mesh="hip_abad_l"/>
+
+          <body name="left_upper_leg" pos="0.08837 -0.00284 -0.01385" euler="0 -0.261799 0">
+            <inertial pos="-0.001100 0.026032 -0.078842" mass="2.634789"
+                      fullinertia="0.024489 0.026049 0.003812 0.000068 0.000512 0.002657"/>
+            <joint name="left_hip_pitch" axis="0 1 0" range="-3 3"/>
+            <geom name="left_hip_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.05 0.045" material="actuator"/>
+            <geom mesh="leg_upper_l"/>
+            <geom class="collision_limb" name="left_upper_leg_col" type="cylinder"
+                  pos="0 0 -0.16" size="0.035 0.09"/>
+
+            <body name="left_lower_leg" pos="-0.01306 0 -0.24916">
+              <inertial pos="0.005232 0.000457 -0.131581" mass="0.346291"
+                        fullinertia="0.002952 0.002943 0.000238 0 0.000083 0.000033"/>
+              <joint name="left_knee" axis="0 1 0" range="0 3"/>
+              <geom name="left_knee_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.04 0.0375" material="actuator"/>
+              <geom mesh="leg_lower_l"/>
+              <geom class="collision_limb" name="left_lower_leg_col" type="cylinder"
+                    pos="0 0 -0.15" size="0.035 0.08"/>
+
+              <body name="left_foot" pos="0 0 -0.2785">
+                <!-- [DEVIATION] The URDF inflates foot Iyy from 0.000806 to 0.08 to
+                     fake the ankle's reflected rotor inertia. That violates the
+                     inertia triangle inequality (Ixx + Izz >= Iyy) and MuJoCo
+                     rejects it, so the true Iyy is restored here and the reflected
+                     inertia is applied properly as armature (0.08 - 0.000806).
+                     For the ankle DOF this is exactly equivalent, since the joint
+                     axis is parallel to the inflated axis. It is not equivalent
+                     for the knee and hip_pitch: the URDF's inflated link inertia
+                     also loaded those parallel-axis joints, which a real rotor
+                     does not. This version is the physically correct one. -->
+                <inertial pos="0.022696 0 -0.013879" mass="0.279583"
+                          fullinertia="0.000092 0.000806 0.000769 0 -0.000054 0"/>
+                <joint name="left_ankle" axis="0 1 0" range="-1.5 1.5" armature="0.079194"/>
+                <geom name="left_ankle_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.03" material="actuator"/>
+                <geom mesh="foot_l"/>
+                <geom class="collision" name="left_foot_col" type="box"
+                      pos="0.03 0 -0.03" euler="1.57079 0 0" size="0.10 0.01 0.02"/>
+                <site name="left_foot_site" pos="0.03 0 -0.04" size="0.01" rgba="0 1 0 1"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= RIGHT LEG ================= -->
+      <body name="right_hip_yaw" pos="0 -0.082 0" euler="0 -0.174533 0">
+        <inertial pos="-0.065362 0.000128 -0.063947" mass="0.842752"
+                  fullinertia="0.001502 0.001361 0.001170 -0.000004 -0.000533 0"/>
+        <joint name="right_hip_yaw" axis="0 0 1" range="-3 3"/>
+        <geom name="right_hip_yaw_act" type="cylinder" pos="0 0 0" size="0.045 0.035" material="actuator"/>
+        <geom mesh="hip_yaw_r"/>
+
+        <body name="right_hip_abad" pos="-0.06435 0 -0.07499" euler="0 0.436332 0">
+          <inertial pos="0.067579 0.013035 0.000132" mass="1.199631"
+                    fullinertia="0.001745 0.003338 0.001951 -0.000003 0.000082 -0.000010"/>
+          <joint name="right_hip_abad" axis="-1 0 0" range="-3 3"/>
+          <geom name="right_hip_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.045 0.045" material="actuator"/>
+          <geom mesh="hip_abad_r"/>
+
+          <body name="right_upper_leg" pos="0.08837 0.00284 -0.01385" euler="0 -0.261799 0">
+            <inertial pos="-0.001100 -0.026032 -0.078842" mass="2.634789"
+                      fullinertia="0.024489 0.026049 0.003812 -0.000068 -0.000512 0.002657"/>
+            <joint name="right_hip_pitch" axis="0 1 0" range="-3 3"/>
+            <geom name="right_hip_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.05 0.045" material="actuator"/>
+            <geom mesh="leg_upper_r"/>
+            <geom class="collision_limb" name="right_upper_leg_col" type="cylinder"
+                  pos="0 0 -0.16" size="0.035 0.09"/>
+
+            <body name="right_lower_leg" pos="-0.01306 0 -0.24916">
+              <inertial pos="0.005232 -0.000457 -0.131581" mass="0.346291"
+                        fullinertia="0.002952 0.002943 0.000238 0 -0.000083 0.000033"/>
+              <joint name="right_knee" axis="0 1 0" range="0 3"/>
+              <geom name="right_knee_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.04 0.0375" material="actuator"/>
+              <geom mesh="leg_lower_r"/>
+              <geom class="collision_limb" name="right_lower_leg_col" type="cylinder"
+                    pos="0 0 -0.15" size="0.035 0.08"/>
+
+              <body name="right_foot" pos="0 0 -0.2785">
+                <!-- [DEVIATION] see left_foot -->
+                <inertial pos="0.022696 0 -0.013879" mass="0.279583"
+                          fullinertia="0.000092 0.000806 0.000769 0 0.000054 0"/>
+                <joint name="right_ankle" axis="0 1 0" range="-1.5 1.5" armature="0.079194"/>
+                <geom name="right_ankle_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.03" material="actuator"/>
+                <geom mesh="foot_r"/>
+                <geom class="collision" name="right_foot_col" type="box"
+                      pos="0.03 0 -0.03" euler="1.57079 0 0" size="0.10 0.01 0.02"/>
+                <site name="right_foot_site" pos="0.03 0 -0.04" size="0.01" rgba="0 1 0 1"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= LEFT ARM ================= -->
+      <body name="left_shoulder" pos="0.01911 0.17608 0.30392">
+        <inertial pos="0.009518 0.053027 0.000060" mass="0.788506"
+                  fullinertia="0.001363 0.000759 0.000866 0.000024 -0.000002 0.000001"/>
+        <joint name="left_shoulder_pitch" axis="0 1 0" range="-3 3"/>
+        <geom name="left_shoulder_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
+        <geom mesh="shoulder1_l"/>
+
+        <body name="left_shoulder_2" pos="0 0.05760 0">
+          <inertial pos="0.000117 0.000122 -0.082758" mass="0.801249"
+                    fullinertia="0.001136 0.001175 0.001241 0.000001 0.000016 0.000001"/>
+          <joint name="left_shoulder_abad" axis="1 0 0" range="-3 3"/>
+          <geom name="left_shoulder_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
+          <geom mesh="shoulder2_l"/>
+
+          <body name="left_upper_arm" pos="0 0 -0.10250">
+            <inertial pos="-0.000073 -0.016471 -0.063210" mass="0.905588"
+                      fullinertia="0.001353 0.001804 0.000796 0.000002 0.000001 -0.000061"/>
+            <joint name="left_shoulder_yaw" axis="0 0 -1" range="-3 3"/>
+            <geom name="left_shoulder_yaw_act" type="cylinder" pos="0 0 0" size="0.033 0.03" material="actuator"/>
+            <geom mesh="shoulder3_l"/>
+            <geom class="collision_limb" name="left_upper_arm_col" type="cylinder"
+                  pos="0 -0.01 -0.035" size="0.05 0.075"/>
+
+            <body name="left_lower_arm" pos="0 0 -0.15750">
+              <inertial pos="-0.007103 -0.000073 -0.099203" mass="0.348390"
+                        fullinertia="0.003400 0.003453 0.000078 0 -0.000049 -0.000002"/>
+              <joint name="left_elbow" axis="0 1 0" range="-3 3"/>
+              <geom name="left_elbow_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.0275" material="actuator"/>
+              <geom mesh="forearm_l"/>
+              <geom class="collision_limb" name="left_lower_arm_col" type="cylinder"
+                    pos="-0.01 0 -0.15" size="0.025 0.075"/>
+
+              <body name="left_hand" pos="0 0 -0.27">
+                <!-- [DEVIATION] URDF puts this 1 g link's COM at z=-0.27 in its own
+                     frame (the -0.27 offset is already in the joint) and gives it a
+                     fully zero inertia tensor, which MuJoCo rejects. COM moved to the
+                     body origin and a negligible diagonal inertia assigned. -->
+                <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7"/>
+                <geom class="collision" name="left_hand_col" type="cylinder"
+                      pos="0 0 0" euler="1.57079 0 0" size="0.025 0.0075"/>
+                <site name="left_hand_site" pos="0 0 0" size="0.01" rgba="0 1 0 1"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= RIGHT ARM ================= -->
+      <body name="right_shoulder" pos="0.01911 -0.17608 0.30392">
+        <inertial pos="0.009518 -0.053027 0.000060" mass="0.788506"
+                  fullinertia="0.001363 0.000759 0.000866 -0.000024 0.000002 0.000001"/>
+        <joint name="right_shoulder_pitch" axis="0 1 0" range="-3 3"/>
+        <geom name="right_shoulder_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
+        <geom mesh="shoulder1_r"/>
+
+        <body name="right_shoulder_2" pos="0 -0.05760 0">
+          <inertial pos="0.000117 -0.000122 -0.082758" mass="0.801249"
+                    fullinertia="0.001136 0.001175 0.001241 -0.000001 -0.000016 0.000001"/>
+          <joint name="right_shoulder_abad" axis="-1 0 0" range="-3 3"/>
+          <geom name="right_shoulder_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
+          <geom mesh="shoulder2_r"/>
+
+          <body name="right_upper_arm" pos="0 0 -0.10250">
+            <inertial pos="-0.000073 0.016471 -0.063210" mass="0.905588"
+                      fullinertia="0.001353 0.001804 0.000796 -0.000002 -0.000001 -0.000061"/>
+            <joint name="right_shoulder_yaw" axis="0 0 1" range="-3 3"/>
+            <geom name="right_shoulder_yaw_act" type="cylinder" pos="0 0 0" size="0.033 0.03" material="actuator"/>
+            <geom mesh="shoulder3_r"/>
+            <!-- [DEVIATION] URDF leaves this collision cylinder at y=-0.01, an
+                 unmirrored copy of the left arm; mirrored to +0.01 here. -->
+            <geom class="collision_limb" name="right_upper_arm_col" type="cylinder"
+                  pos="0 0.01 -0.035" size="0.05 0.075"/>
+
+            <body name="right_lower_arm" pos="0 0 -0.15750">
+              <inertial pos="-0.007103 -0.000073 -0.099203" mass="0.348390"
+                        fullinertia="0.003400 0.003453 0.000078 0 -0.000049 -0.000002"/>
+              <joint name="right_elbow" axis="0 1 0" range="-3 3"/>
+              <geom name="right_elbow_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.0275" material="actuator"/>
+              <!-- [DEVIATION] URDF renders the right forearm with the unmirrored
+                   mesh; mirrored here for consistency with the rest of the side. -->
+              <geom mesh="forearm_r"/>
+              <geom class="collision_limb" name="right_lower_arm_col" type="cylinder"
+                    pos="-0.01 0 -0.15" size="0.025 0.075"/>
+
+              <body name="right_hand" pos="0 0 -0.27">
+                <!-- [DEVIATION] see left_hand -->
+                <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7"/>
+                <geom class="collision" name="right_hand_col" type="cylinder"
+                      pos="0 0 0" euler="1.57079 0 0" size="0.025 0.0075"/>
+                <site name="right_hand_site" pos="0 0 0" size="0.01" rgba="0 1 0 1"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Direct-drive torque actuators. ctrlrange = URDF <limit effort>.
+       URDF velocity limits, for reference (rad/s):
+       hip_yaw/abad 48, hip_pitch 40, knee 20, ankle 24,
+       shoulder_* 48, elbow 30. -->
+  <actuator>
+    <motor name="left_hip_yaw"        joint="left_hip_yaw"        ctrlrange="-34 34"/>
+    <motor name="left_hip_abad"       joint="left_hip_abad"       ctrlrange="-34 34"/>
+    <motor name="left_hip_pitch"      joint="left_hip_pitch"      ctrlrange="-72 72"/>
+    <motor name="left_knee"           joint="left_knee"           ctrlrange="-144 144"/>
+    <motor name="left_ankle"          joint="left_ankle"          ctrlrange="-68 68"/>
+    <motor name="right_hip_yaw"       joint="right_hip_yaw"       ctrlrange="-34 34"/>
+    <motor name="right_hip_abad"      joint="right_hip_abad"      ctrlrange="-34 34"/>
+    <motor name="right_hip_pitch"     joint="right_hip_pitch"     ctrlrange="-72 72"/>
+    <motor name="right_knee"          joint="right_knee"          ctrlrange="-144 144"/>
+    <motor name="right_ankle"         joint="right_ankle"         ctrlrange="-68 68"/>
+    <motor name="left_shoulder_pitch" joint="left_shoulder_pitch" ctrlrange="-34 34"/>
+    <motor name="left_shoulder_abad"  joint="left_shoulder_abad"  ctrlrange="-34 34"/>
+    <motor name="left_shoulder_yaw"   joint="left_shoulder_yaw"   ctrlrange="-34 34"/>
+    <motor name="left_elbow"          joint="left_elbow"          ctrlrange="-55 55"/>
+    <motor name="right_shoulder_pitch" joint="right_shoulder_pitch" ctrlrange="-34 34"/>
+    <motor name="right_shoulder_abad" joint="right_shoulder_abad" ctrlrange="-34 34"/>
+    <motor name="right_shoulder_yaw"  joint="right_shoulder_yaw"  ctrlrange="-34 34"/>
+    <motor name="right_elbow"         joint="right_elbow"         ctrlrange="-55 55"/>
+  </actuator>
+
+  <sensor>
+    <framequat     name="base_quat" objtype="site" objname="imu"/>
+    <gyro          name="base_gyro" site="imu"/>
+    <accelerometer name="base_acc"  site="imu"/>
+    <framepos      name="base_pos"  objtype="site" objname="imu"/>
+    <velocimeter   name="base_vel"  site="imu"/>
+  </sensor>
+
+  <keyframe>
+    <!-- Nominal stance: all joints at zero, base height set so the foot boxes
+         just touch the floor. -->
+    <key name="home"
+         qpos="0 0 0.6889 1 0 0 0
+               0 0 0 0 0
+               0 0 0 0 0
+               0 0 0 0
+               0 0 0 0"/>
+  </keyframe>
+</mujoco>

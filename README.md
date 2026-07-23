@@ -1,2 +1,2 @@
 # Biped-MPC
-Locomotion of biped using mujoco MPC
+Biped Locomotion Control stack using Model Predictive Control 
