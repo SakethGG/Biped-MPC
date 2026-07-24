@@ -33,7 +33,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
      <collision>
@@ -43,6 +43,58 @@ Simple Foot: foot approximated as single box-contact -->
             </geometry>
     </collision>
   </link>
+  
+  
+  <link
+    name="back">
+    <inertial>
+      <origin
+        xyz="0.0 0.0 0.0"
+        rpy="0 0 0" />
+      <mass value="0.1" />
+      <inertia
+        ixx="0.0"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="0.0"
+        iyz="0.0"
+        izz="0.0" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/back.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+        <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+        <geometry>
+            <mesh
+              filename="../meshes/back.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+    </collision>
+  </link>
+  <joint
+    name="back"
+    type="fixed">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base" />
+    <child
+      link="back" />
+  </joint>
+
+
   <link
     name="left_hip_yaw">
     <inertial>
@@ -69,16 +121,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: left_hip_yaw -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <cylinder radius="0.045" length="0.07" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -122,16 +165,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: left_hip_abad -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 1.5707963 0" />
-      <geometry>
-        <cylinder radius="0.045" length="0.09" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -175,7 +209,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -183,16 +217,7 @@ Simple Foot: foot approximated as single box-contact -->
         <geometry>
             <cylinder radius="0.035" length="0.18"/>
         </geometry>
-    </collision>    <!-- actuator marker: left_hip_pitch -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.05" length="0.09" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="left_hip_pitch"
@@ -235,7 +260,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -243,16 +268,7 @@ Simple Foot: foot approximated as single box-contact -->
         <geometry>
             <cylinder radius="0.035" length="0.16"/>
         </geometry>
-    </collision>    <!-- actuator marker: left_knee -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.04" length="0.075" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="left_knee"
@@ -268,7 +284,7 @@ Simple Foot: foot approximated as single box-contact -->
       xyz="0 1 0" />
           <limit effort="144" lower="0." upper="3." velocity="20"/>
   </joint>
-
+  
    <link
     name="left_foot">
     <inertial>
@@ -297,22 +313,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>
-    <collision>
-        <origin rpy="1.57079 0 0" xyz="0.03 0.0 -0.03"/>
-        <geometry>
-            <box size="0.20 0.02 0.04"/>
-        </geometry>
-    </collision>    <!-- actuator marker: left_ankle -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.03" length="0.06" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
   </link>
@@ -330,6 +331,70 @@ Simple Foot: foot approximated as single box-contact -->
       xyz="0 1 0" />
           <limit effort="68" lower="-1.5" upper="1.5" velocity="24"/>
   </joint>
+
+  <link
+    name="left_toe">
+    <inertial>
+      <origin
+        xyz="0.0 -0.0 0.0"
+        rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia
+        ixx="0.0"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="0.0"
+        iyz="0.0"
+        izz="0.0" />
+    </inertial>
+      <collision>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <box size="0.08 0.04 0.02"/>
+            </geometry>
+    </collision>
+  </link>
+  <link
+      name="left_heel">
+    <inertial>
+      <origin
+        xyz="0.0 -0.0 0.0"
+        rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia
+        ixx="0.0"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="0.0"
+        iyz="0.0"
+        izz="0.0" />
+    </inertial>
+      <collision>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <box size="0.06 0.04 0.02"/>
+            </geometry>
+    </collision>
+  </link>
+  <joint name="left_toe_link" type="fixed">
+    <origin
+      xyz="0.085 0.0 -0.03"
+      rpy="0 0 0" />
+    <parent
+      link="left_foot" />
+    <child
+      link="left_toe" />
+  </joint>
+  <joint name="left_heel_link" type="fixed">
+    <origin
+      xyz="-0.05 0.0 -0.03"
+      rpy="0 0 0" />
+    <parent
+      link="left_foot" />
+    <child
+      link="left_heel" />
+  </joint>
+
  <link
     name="right_hip_yaw">
     <inertial>
@@ -356,16 +421,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: right_hip_yaw -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <cylinder radius="0.045" length="0.07" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -410,16 +466,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: right_hip_abad -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 1.5707963 0" />
-      <geometry>
-        <cylinder radius="0.045" length="0.09" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -464,7 +511,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -472,16 +519,7 @@ Simple Foot: foot approximated as single box-contact -->
         <geometry>
             <cylinder radius="0.035" length="0.18"/>
         </geometry>
-    </collision>    <!-- actuator marker: right_hip_pitch -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.05" length="0.09" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="right_hip_pitch"
@@ -524,7 +562,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -532,16 +570,7 @@ Simple Foot: foot approximated as single box-contact -->
         <geometry>
             <cylinder radius="0.035" length="0.16"/>
         </geometry>
-    </collision>    <!-- actuator marker: right_knee -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.04" length="0.075" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="right_knee"
@@ -586,22 +615,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>
-    <collision>
-        <origin rpy="1.57079 0 0" xyz="0.03 0.0 -0.03"/>
-        <geometry>
-            <box size="0.20 0.02 0.04"/>
-        </geometry>
-    </collision>    <!-- actuator marker: right_ankle -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.03" length="0.06" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
   </link>
@@ -619,6 +633,71 @@ Simple Foot: foot approximated as single box-contact -->
       xyz="0 1 0" />
           <limit effort="68" lower="-1.5" upper="1.5" velocity="24"/>
   </joint>
+
+  <link
+    name="right_toe">
+    <inertial>
+      <origin
+        xyz="0.0 -0.0 0.0"
+        rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia
+        ixx="0.0"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="0.0"
+        iyz="0.0"
+        izz="0.0" />
+    </inertial>
+      <collision>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <box size="0.08 0.04 0.02"/>
+            </geometry>
+    </collision>
+  </link>
+  <link
+      name="right_heel">
+    <inertial>
+      <origin
+        xyz="0.0 -0.0 0.0"
+        rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia
+        ixx="0.0"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="0.0"
+        iyz="0.0"
+        izz="0.0" />
+    </inertial>
+      <collision>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <box size="0.06 0.04 0.02"/>
+            </geometry>
+    </collision>
+  </link>
+  <joint name="right_toe_link" type="fixed">
+    <origin
+      xyz="0.085 0.0 -0.03"
+      rpy="0 0 0" />
+    <parent
+      link="right_foot" />
+    <child
+      link="right_toe" />
+  </joint>
+  <joint name="right_heel_link" type="fixed">
+    <origin
+      xyz="-0.05 0.0 -0.03"
+      rpy="0 0 0" />
+    <parent
+      link="right_foot" />
+    <child
+      link="right_heel" />
+  </joint>
+  
+
   <!-- Left Arm -->
   <link
     name="left_shoulder">
@@ -646,16 +725,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: left_shoulder_pitch -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.038" length="0.07" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -700,16 +770,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: left_shoulder_abad -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 1.5707963 0" />
-      <geometry>
-        <cylinder radius="0.038" length="0.07" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -755,7 +816,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -764,16 +825,7 @@ Simple Foot: foot approximated as single box-contact -->
             <!-- <box size="0.1 0.085 0.15"/> -->
             <cylinder radius="0.05" length="0.15"/>
         </geometry>
-    </collision>    <!-- actuator marker: left_shoulder_yaw -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <cylinder radius="0.033" length="0.06" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="left_shoulder_yaw"
@@ -790,6 +842,7 @@ Simple Foot: foot approximated as single box-contact -->
         <limit effort="34" lower="-3" upper="3" velocity="48"/>
   </joint>
 
+  
   <link
     name="left_lower_arm">
     <inertial>
@@ -816,7 +869,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -824,16 +877,7 @@ Simple Foot: foot approximated as single box-contact -->
         <geometry>
             <cylinder radius="0.025" length="0.15"/>
         </geometry>
-    </collision>    <!-- actuator marker: left_elbow -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.03" length="0.055" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="left_elbow"
@@ -910,16 +954,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: right_shoulder_pitch -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.038" length="0.07" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -937,7 +972,7 @@ Simple Foot: foot approximated as single box-contact -->
       xyz="0 1 0" />
           <limit effort="34" lower="-3" upper="3" velocity="48"/>
   </joint>
-
+  
   <link
     name="right_shoulder_2">
     <inertial>
@@ -964,16 +999,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
-      </material>
-    </visual>    <!-- actuator marker: right_shoulder_abad -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 1.5707963 0" />
-      <geometry>
-        <cylinder radius="0.038" length="0.07" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
+          rgba="0.05 0.05 0.05 1" />
       </material>
     </visual>
   </link>
@@ -1019,7 +1045,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -1028,16 +1054,7 @@ Simple Foot: foot approximated as single box-contact -->
             <!-- <box size="0.1 0.085 0.15"/> -->
             <cylinder radius="0.05" length="0.15"/>
         </geometry>
-    </collision>    <!-- actuator marker: right_shoulder_yaw -->
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <cylinder radius="0.033" length="0.06" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="right_shoulder_yaw"
@@ -1054,6 +1071,7 @@ Simple Foot: foot approximated as single box-contact -->
         <limit effort="34" lower="-3" upper="3" velocity="48"/>
   </joint>
 
+  
   <link
     name="right_lower_arm">
     <inertial>
@@ -1080,7 +1098,7 @@ Simple Foot: foot approximated as single box-contact -->
       <material
         name="">
         <color
-          rgba="0.75 0.75 0.75 1" />
+          rgba="0.52941176470588 0.752941176470588 0.2941176470588 1" />
       </material>
     </visual>
     <collision>
@@ -1088,16 +1106,7 @@ Simple Foot: foot approximated as single box-contact -->
         <geometry>
             <cylinder radius="0.025" length="0.15"/>
         </geometry>
-    </collision>    <!-- actuator marker: right_elbow -->
-    <visual>
-      <origin xyz="0 0 0" rpy="1.5707963 0 0" />
-      <geometry>
-        <cylinder radius="0.03" length="0.055" />
-      </geometry>
-      <material name="actuator_black">
-        <color rgba="0.05 0.05 0.05 1" />
-      </material>
-    </visual>
+    </collision>
   </link>
   <joint
     name="right_elbow"
@@ -1146,5 +1155,10 @@ Simple Foot: foot approximated as single box-contact -->
     <child
       link="right_hand" />
   </joint>
+<!--  -->
+<!--  -->
+
+
+
 
 </robot>

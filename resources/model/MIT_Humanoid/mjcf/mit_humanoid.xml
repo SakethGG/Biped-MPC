@@ -74,7 +74,8 @@
              rgb2="0.1 0.15 0.2" width="512" height="512"/>
     <material name="grid" texture="grid" texrepeat="8 8" reflectance="0.1"/>
     <material name="metal" rgba="0.75 0.75 0.75 1" specular="0.5" shininess="0.6"/>
-    <material name="actuator" rgba="0.05 0.05 0.05 1" specular="0.3" shininess="0.4"/>
+    <material name="accent" rgba="0.53 0.75 0.29 1" specular="0.4" shininess="0.5"/>
+    <material name="foot" rgba="0.64 0.12 0.75 1" specular="0.3" shininess="0.4"/>
 
     <mesh name="torso" file="torso.stl" scale="0.001 0.001 0.001"/>
 
@@ -119,22 +120,19 @@
         <inertial pos="-0.065362 -0.000128 -0.063947" mass="0.842752"
                   fullinertia="0.001502 0.001361 0.001170 0.000004 0.000533 0"/>
         <joint name="left_hip_yaw" axis="0 0 -1" range="-3 3"/>
-        <geom name="left_hip_yaw_act" type="cylinder" pos="0 0 0" size="0.045 0.035" material="actuator"/>
-        <geom mesh="hip_yaw_l"/>
+        <geom mesh="hip_yaw_l" material="accent"/>
 
         <body name="left_hip_abad" pos="-0.06435 0 -0.07499" euler="0 0.436332 0">
           <inertial pos="0.067579 -0.013035 0.000132" mass="1.199631"
                     fullinertia="0.001745 0.003338 0.001951 0.000003 -0.000082 -0.000010"/>
           <joint name="left_hip_abad" axis="1 0 0" range="-3 3"/>
-          <geom name="left_hip_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.045 0.045" material="actuator"/>
-          <geom mesh="hip_abad_l"/>
+          <geom mesh="hip_abad_l" material="accent"/>
 
           <body name="left_upper_leg" pos="0.08837 -0.00284 -0.01385" euler="0 -0.261799 0">
             <inertial pos="-0.001100 0.026032 -0.078842" mass="2.634789"
                       fullinertia="0.024489 0.026049 0.003812 0.000068 0.000512 0.002657"/>
             <joint name="left_hip_pitch" axis="0 1 0" range="-3 3"/>
-            <geom name="left_hip_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.05 0.045" material="actuator"/>
-            <geom mesh="leg_upper_l"/>
+            <geom mesh="leg_upper_l" material="accent"/>
             <geom class="collision_limb" name="left_upper_leg_col" type="cylinder"
                   pos="0 0 -0.16" size="0.035 0.09"/>
 
@@ -142,8 +140,7 @@
               <inertial pos="0.005232 0.000457 -0.131581" mass="0.346291"
                         fullinertia="0.002952 0.002943 0.000238 0 0.000083 0.000033"/>
               <joint name="left_knee" axis="0 1 0" range="0 3"/>
-              <geom name="left_knee_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.04 0.0375" material="actuator"/>
-              <geom mesh="leg_lower_l"/>
+              <geom mesh="leg_lower_l" material="accent"/>
               <geom class="collision_limb" name="left_lower_leg_col" type="cylinder"
                     pos="0 0 -0.15" size="0.035 0.08"/>
 
@@ -161,8 +158,7 @@
                 <inertial pos="0.022696 0 -0.013879" mass="0.279583"
                           fullinertia="0.000092 0.000806 0.000769 0 -0.000054 0"/>
                 <joint name="left_ankle" axis="0 1 0" range="-1.5 1.5" armature="0.079194"/>
-                <geom name="left_ankle_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.03" material="actuator"/>
-                <geom mesh="foot_l"/>
+                <geom mesh="foot_l" material="foot"/>
                 <geom class="collision" name="left_foot_col" type="box"
                       pos="0.03 0 -0.03" euler="1.57079 0 0" size="0.10 0.01 0.02"/>
                 <site name="left_foot_site" pos="0.03 0 -0.04" size="0.01" rgba="0 1 0 1"/>
@@ -177,22 +173,19 @@
         <inertial pos="-0.065362 0.000128 -0.063947" mass="0.842752"
                   fullinertia="0.001502 0.001361 0.001170 -0.000004 -0.000533 0"/>
         <joint name="right_hip_yaw" axis="0 0 1" range="-3 3"/>
-        <geom name="right_hip_yaw_act" type="cylinder" pos="0 0 0" size="0.045 0.035" material="actuator"/>
-        <geom mesh="hip_yaw_r"/>
+        <geom mesh="hip_yaw_r" material="accent"/>
 
         <body name="right_hip_abad" pos="-0.06435 0 -0.07499" euler="0 0.436332 0">
           <inertial pos="0.067579 0.013035 0.000132" mass="1.199631"
                     fullinertia="0.001745 0.003338 0.001951 -0.000003 0.000082 -0.000010"/>
           <joint name="right_hip_abad" axis="-1 0 0" range="-3 3"/>
-          <geom name="right_hip_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.045 0.045" material="actuator"/>
-          <geom mesh="hip_abad_r"/>
+          <geom mesh="hip_abad_r" material="accent"/>
 
           <body name="right_upper_leg" pos="0.08837 0.00284 -0.01385" euler="0 -0.261799 0">
             <inertial pos="-0.001100 -0.026032 -0.078842" mass="2.634789"
                       fullinertia="0.024489 0.026049 0.003812 -0.000068 -0.000512 0.002657"/>
             <joint name="right_hip_pitch" axis="0 1 0" range="-3 3"/>
-            <geom name="right_hip_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.05 0.045" material="actuator"/>
-            <geom mesh="leg_upper_r"/>
+            <geom mesh="leg_upper_r" material="accent"/>
             <geom class="collision_limb" name="right_upper_leg_col" type="cylinder"
                   pos="0 0 -0.16" size="0.035 0.09"/>
 
@@ -200,8 +193,7 @@
               <inertial pos="0.005232 -0.000457 -0.131581" mass="0.346291"
                         fullinertia="0.002952 0.002943 0.000238 0 -0.000083 0.000033"/>
               <joint name="right_knee" axis="0 1 0" range="0 3"/>
-              <geom name="right_knee_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.04 0.0375" material="actuator"/>
-              <geom mesh="leg_lower_r"/>
+              <geom mesh="leg_lower_r" material="accent"/>
               <geom class="collision_limb" name="right_lower_leg_col" type="cylinder"
                     pos="0 0 -0.15" size="0.035 0.08"/>
 
@@ -210,8 +202,7 @@
                 <inertial pos="0.022696 0 -0.013879" mass="0.279583"
                           fullinertia="0.000092 0.000806 0.000769 0 0.000054 0"/>
                 <joint name="right_ankle" axis="0 1 0" range="-1.5 1.5" armature="0.079194"/>
-                <geom name="right_ankle_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.03" material="actuator"/>
-                <geom mesh="foot_r"/>
+                <geom mesh="foot_r" material="foot"/>
                 <geom class="collision" name="right_foot_col" type="box"
                       pos="0.03 0 -0.03" euler="1.57079 0 0" size="0.10 0.01 0.02"/>
                 <site name="right_foot_site" pos="0.03 0 -0.04" size="0.01" rgba="0 1 0 1"/>
@@ -226,22 +217,19 @@
         <inertial pos="0.009518 0.053027 0.000060" mass="0.788506"
                   fullinertia="0.001363 0.000759 0.000866 0.000024 -0.000002 0.000001"/>
         <joint name="left_shoulder_pitch" axis="0 1 0" range="-3 3"/>
-        <geom name="left_shoulder_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
-        <geom mesh="shoulder1_l"/>
+        <geom mesh="shoulder1_l" material="accent"/>
 
         <body name="left_shoulder_2" pos="0 0.05760 0">
           <inertial pos="0.000117 0.000122 -0.082758" mass="0.801249"
                     fullinertia="0.001136 0.001175 0.001241 0.000001 0.000016 0.000001"/>
           <joint name="left_shoulder_abad" axis="1 0 0" range="-3 3"/>
-          <geom name="left_shoulder_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
-          <geom mesh="shoulder2_l"/>
+          <geom mesh="shoulder2_l" material="accent"/>
 
           <body name="left_upper_arm" pos="0 0 -0.10250">
             <inertial pos="-0.000073 -0.016471 -0.063210" mass="0.905588"
                       fullinertia="0.001353 0.001804 0.000796 0.000002 0.000001 -0.000061"/>
             <joint name="left_shoulder_yaw" axis="0 0 -1" range="-3 3"/>
-            <geom name="left_shoulder_yaw_act" type="cylinder" pos="0 0 0" size="0.033 0.03" material="actuator"/>
-            <geom mesh="shoulder3_l"/>
+            <geom mesh="shoulder3_l" material="accent"/>
             <geom class="collision_limb" name="left_upper_arm_col" type="cylinder"
                   pos="0 -0.01 -0.035" size="0.05 0.075"/>
 
@@ -249,8 +237,7 @@
               <inertial pos="-0.007103 -0.000073 -0.099203" mass="0.348390"
                         fullinertia="0.003400 0.003453 0.000078 0 -0.000049 -0.000002"/>
               <joint name="left_elbow" axis="0 1 0" range="-3 3"/>
-              <geom name="left_elbow_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.0275" material="actuator"/>
-              <geom mesh="forearm_l"/>
+              <geom mesh="forearm_l" material="accent"/>
               <geom class="collision_limb" name="left_lower_arm_col" type="cylinder"
                     pos="-0.01 0 -0.15" size="0.025 0.075"/>
 
@@ -274,22 +261,19 @@
         <inertial pos="0.009518 -0.053027 0.000060" mass="0.788506"
                   fullinertia="0.001363 0.000759 0.000866 -0.000024 0.000002 0.000001"/>
         <joint name="right_shoulder_pitch" axis="0 1 0" range="-3 3"/>
-        <geom name="right_shoulder_pitch_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
-        <geom mesh="shoulder1_r"/>
+        <geom mesh="shoulder1_r" material="accent"/>
 
         <body name="right_shoulder_2" pos="0 -0.05760 0">
           <inertial pos="0.000117 -0.000122 -0.082758" mass="0.801249"
                     fullinertia="0.001136 0.001175 0.001241 -0.000001 -0.000016 0.000001"/>
           <joint name="right_shoulder_abad" axis="-1 0 0" range="-3 3"/>
-          <geom name="right_shoulder_abad_act" type="cylinder" euler="0 1.5707963 0" pos="0 0 0" size="0.038 0.035" material="actuator"/>
-          <geom mesh="shoulder2_r"/>
+          <geom mesh="shoulder2_r" material="accent"/>
 
           <body name="right_upper_arm" pos="0 0 -0.10250">
             <inertial pos="-0.000073 0.016471 -0.063210" mass="0.905588"
                       fullinertia="0.001353 0.001804 0.000796 -0.000002 -0.000001 -0.000061"/>
             <joint name="right_shoulder_yaw" axis="0 0 1" range="-3 3"/>
-            <geom name="right_shoulder_yaw_act" type="cylinder" pos="0 0 0" size="0.033 0.03" material="actuator"/>
-            <geom mesh="shoulder3_r"/>
+            <geom mesh="shoulder3_r" material="accent"/>
             <!-- [DEVIATION] URDF leaves this collision cylinder at y=-0.01, an
                  unmirrored copy of the left arm; mirrored to +0.01 here. -->
             <geom class="collision_limb" name="right_upper_arm_col" type="cylinder"
@@ -299,10 +283,9 @@
               <inertial pos="-0.007103 -0.000073 -0.099203" mass="0.348390"
                         fullinertia="0.003400 0.003453 0.000078 0 -0.000049 -0.000002"/>
               <joint name="right_elbow" axis="0 1 0" range="-3 3"/>
-              <geom name="right_elbow_act" type="cylinder" euler="1.5707963 0 0" pos="0 0 0" size="0.03 0.0275" material="actuator"/>
               <!-- [DEVIATION] URDF renders the right forearm with the unmirrored
                    mesh; mirrored here for consistency with the rest of the side. -->
-              <geom mesh="forearm_r"/>
+              <geom mesh="forearm_r" material="accent"/>
               <geom class="collision_limb" name="right_lower_arm_col" type="cylinder"
                     pos="-0.01 0 -0.15" size="0.025 0.075"/>
 
