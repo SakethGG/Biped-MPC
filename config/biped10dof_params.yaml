@@ -1,0 +1,69 @@
+# biped10dof_params.yaml
+# Robot-independent parameter file, in the spirit of Cheetah-Software's
+# ControlParameters/ YAML loading (common/include/ControlParameters/).
+# This project doesn't wire up a YAML parser (no simulation harness is
+# included per your request) -- treat this as the canonical numeric
+# reference to load into Biped10DoFParams<T> / ConvexMPC<T> yourself, and
+# as the single place to retune everything without touching code.
+
+robot:
+  mass: 11.84            # kg               (Table I)
+  Ixx: 0.0443             # kg*m^2           (Table I)
+  Iyy: 0.0535
+  Izz: 0.0214
+  body_length: 0.114      # m, x             (Table I, l_b)
+  body_width: 0.194       # m, y             (Table I, w_b)
+  body_height: 0.247      # m, z             (Table I, h_b)
+  thigh_length: 0.2       # m                (Table I, l1)
+  calf_length: 0.2        # m                (Table I, l2)
+  foot_toe: 0.09           # m                (Table I, l_toe)
+  foot_heel: 0.05          # m                (Table I, l_heel)
+  max_torque: 33.5         # N*m, per joint   (Table II)
+  max_joint_vel: 21.0       # rad/s            (Table II)
+
+mpc:
+  horizon_steps: 10        # k                (paper: 10 horizons per 0.3s gait cycle)
+  gait_cycle_period: 0.3   # s                (paper, Section III-D / IV)
+  mpc_dt: 0.03              # s                (paper: MPC sampling frequency)
+  sim_dt: 0.001              # s               (paper: simulation runs at 1 kHz -- for reference;
+                              #                  your MuJoCo step size is independent of this)
+
+  # eq. (13) state weights Q -- paper's Section IV values.
+  # NOTE the paper reuses Qx/Qy/Qz for BOTH translational weight symbols
+  # AND (confusingly) Qphi/Qtheta/Qpsi for angles; values below are kept
+  # unambiguous by state index instead (see setStateWeights() in ConvexMPC.h).
+  Q_phi: 100.0
+  Q_theta: 100.0
+  Q_psi: 20.0
+  Q_x: 50.0
+  Q_y: 50.0
+  Q_z: 100.0
+  Q_omega: 1.0     # paper: "the rest weighting factors in Q remains at 1"
+  Q_pdot: 1.0
+  Q_gravity_state: 0.0   # augmented state, not physically weighted
+
+  # eq. (24) input regularization K -- not printed numerically in the
+  # paper; MIT-Cheetah-family default order of magnitude, retune.
+  R_force: 1.0e-5
+  R_moment: 1.0e-5
+
+constraints:
+  friction_coeff: 0.4     # mu -- not given numerically in the paper text; standard default, retune
+  Fz_min: 10.0              # N   (eq. 18)
+  Fz_max: 400.0             # N   (eq. 18) -- retune to (mass * g) / stance legs with margin
+
+swing:
+  height: 0.06              # m, Bezier swing apex
+  Kp: 500.0                  # eq. (30), per-axis (diagonal gain)
+  Kd: 10.0                   # eq. (30), per-axis (diagonal gain)
+
+gaits:
+  stand:
+    type: STAND
+  walk:
+    type: WALK
+    duty_cycle: 0.5
+    leg_offset: [0.0, 0.5]   # [right, left], fraction of cycle
+  hop:
+    type: HOP
+    flight_fraction: 0.25    # last quarter of cycle is flight (Section IV-D)
