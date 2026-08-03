@@ -11,7 +11,6 @@
 //#define DRAW_DEBUG_SWINGS
 //#define DRAW_DEBUG_PATH
 
-
 ////////////////////
 // Controller
 ////////////////////
