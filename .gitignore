@@ -2,7 +2,6 @@
 .vscode/
 # Exclude temporary folders
 build/
-build-codex/
 # Keep the logs directory skeleton via .gitkeep files, but ignore generated payloads.
 logs/**
 !logs/**/
