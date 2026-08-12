@@ -1,0 +1,953 @@
+#include <array>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <thread>
+
+#include <mujoco/mujoco.h>
+
+#include "ControllerConfig.h"
+#include "MujocoCheaterStateReader.h"
+#include "RobotConfig.h"
+#include "SimulationConfig.h"
+#include "SharedMemoryPublisher.h"
+#include "SimulationRunner.h"
+#include "Utilities/MatrixUtils.h"
+#include "Utilities/Timing.h"
+#include "ViewerSyncThrottle.h"
+#include "setupRobotParams.h"
+
+namespace {
+
+bool standingKeyboardControlsFromRequest(const LegDynamicsRequest& request) {
+	return request.standingFootJacobians;
+}
+
+Vec2<double> rollPitchFromQuaternion(Quat<double> quat) {
+	quat.normalize();
+	const double w = quat.w();
+	const double x = quat.x();
+	const double y = quat.y();
+	const double z = quat.z();
+
+	Vec2<double> rollPitch = Vec2<double>::Zero();
+	rollPitch[0] = std::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y));
+	const double sinPitch = std::clamp(2.0 * (w * y - z * x), -1.0, 1.0);
+	rollPitch[1] = std::asin(sinPitch);
+	return rollPitch;
+}
+
+Vec3<double> reducedBodyOffsetWorld(const StateEstimate<double>& state,
+                                    const RobotParams<double>& params) {
+	return Rz(state.psi) * params.bodyComLocation;
+}
+
+Vec3<double> reducedBodyComWorld(const StateEstimate<double>& state,
+                                 const RobotParams<double>& params) {
+	return state.torsoPos_W + reducedBodyOffsetWorld(state, params);
+}
+
+Vec3<double> reducedBodyComVelocityWorld(const StateEstimate<double>& state,
+                                         const RobotParams<double>& params) {
+	const Vec3<double> bodyBOffset_W = reducedBodyOffsetWorld(state, params);
+	return state.torsoLinVel_W + state.torsoAngVel_W.cross(bodyBOffset_W);
+}
+
+Vec3<double> worldToBodyFrame(const Quat<double>& torsoQuat_W, const Vec3<double>& value_W) {
+	return torsoQuat_W.toRotationMatrix().transpose() * value_W;
+}
+
+std::array<double, DashboardSharedMemoryPublisher::kStateDim> reducedBodyStateForDashboard(
+	const StateEstimate<double>& state,
+	const RobotParams<double>& params,
+	const UserCommand& userCommand,
+	const ControllerBodyTargetDebugState& bodyTargetDebug) {
+	const Vec2<double> rollPitch = rollPitchFromQuaternion(state.torsoQuat_W);
+	const Vec3<double> comWorld = reducedBodyComWorld(state, params);
+	const Vec3<double> comVelocityWorld = reducedBodyComVelocityWorld(state, params);
+	const Vec3<double> omegaBody = worldToBodyFrame(state.torsoQuat_W, state.torsoAngVel_W);
+	const Vec3<double> comVelocityBody =
+		worldToBodyFrame(state.torsoQuat_W, comVelocityWorld);
+	const bool targetValid = bodyTargetDebug.initialized &&
+	                        bodyTargetDebug.position_W.allFinite() &&
+	                        bodyTargetDebug.euler_W.allFinite();
+	const double targetRoll = targetValid ? bodyTargetDebug.euler_W[0]
+	                                      : std::numeric_limits<double>::quiet_NaN();
+	const double targetPitch = targetValid ? bodyTargetDebug.euler_W[1]
+	                                       : std::numeric_limits<double>::quiet_NaN();
+	const double targetHeight = targetValid ? bodyTargetDebug.position_W[2]
+	                                        : std::numeric_limits<double>::quiet_NaN();
+
+	return {
+		rollPitch[0],
+		rollPitch[1],
+		state.psi,
+		comWorld.x(),
+		comWorld.y(),
+		comWorld.z(),
+		omegaBody.x(),
+		omegaBody.y(),
+		omegaBody.z(),
+		comVelocityBody.x(),
+		comVelocityBody.y(),
+		comVelocityBody.z(),
+		userCommand.x_dot,
+		userCommand.y_dot,
+		userCommand.psi_dot,
+		targetRoll,
+		targetPitch,
+		targetHeight,
+	};
+}
+
+std::string robotTypeName(const RobotType type) {
+	switch (type) {
+		case RobotType::MIT_HUMANOID:
+			return "MIT Humanoid";
+		case RobotType::UNITREE_G1:
+			return "Unitree G1";
+		case RobotType::UNITREE_H1:
+			return "Unitree H1";
+		case RobotType::TRON_BIPED:
+			return "TRON1 Biped";
+	}
+	return "Unknown";
+}
+
+bool parseProfilePoint(const std::string& token, double& time, double& value) {
+	const std::size_t separator = token.find(':');
+	if (separator == std::string::npos) {
+		return false;
+	}
+	const std::string timeToken = token.substr(0, separator);
+	const std::string valueToken = token.substr(separator + 1);
+	char* endTime = nullptr;
+	char* endValue = nullptr;
+	time = std::strtod(timeToken.c_str(), &endTime);
+	value = std::strtod(valueToken.c_str(), &endValue);
+	return endTime != timeToken.c_str() && *endTime == '\0' &&
+	       endValue != valueToken.c_str() && *endValue == '\0' &&
+	       std::isfinite(time) && std::isfinite(value);
+}
+
+std::vector<std::pair<double, double>> parseCommandProfile(const char* profileEnv) {
+	std::vector<std::pair<double, double>> profile;
+	if (profileEnv == nullptr || std::string(profileEnv).empty()) {
+		return profile;
+	}
+
+	std::stringstream stream(profileEnv);
+	std::string token;
+	while (std::getline(stream, token, ',')) {
+		double time = 0.0;
+		double value = 0.0;
+		if (parseProfilePoint(token, time, value)) {
+			profile.emplace_back(time, value);
+		}
+	}
+	std::sort(profile.begin(), profile.end());
+	return profile;
+}
+
+double sampleCommandProfile(const std::vector<std::pair<double, double>>& profile,
+                            const double simTime) {
+	double value = profile.front().second;
+	for (const auto& point : profile) {
+		if (simTime + 1e-12 < point.first) {
+			break;
+		}
+		value = point.second;
+	}
+	return value;
+}
+
+int legControlModeCode(const LegControlMode mode) {
+	switch (mode) {
+		case LegControlMode::JointPd:
+			return 0;
+		case LegControlMode::JointTorque:
+			return 1;
+		case LegControlMode::SwingFoot:
+			return 2;
+		case LegControlMode::StanceWrench:
+			return 3;
+	}
+	return -1;
+}
+
+void writeVec3Csv(std::ostream& out, const Vec3<double>& value) {
+	out << value.x() << ',' << value.y() << ',' << value.z();
+}
+
+const ControllerContactDebugLegState* contactDebugForSide(
+	const std::vector<ControllerContactDebugLegState>& states,
+	const Side side) {
+	for (const auto& state : states) {
+		if (state.side == side) {
+			return &state;
+		}
+	}
+	return nullptr;
+}
+
+std::filesystem::path defaultHeadlessTelemetryPath() {
+	return std::filesystem::path("logs") / "debug" / "headless_telemetry" /
+	       "walking_telemetry.csv";
+}
+
+std::filesystem::path defaultStateTelemetryPath() {
+	return std::filesystem::path("logs") / "debug" / "state_telemetry" /
+	       "state_telemetry.csv";
+}
+
+void applyMarkerColor(mjModel* model, const int bodyId, const DebugVizMarker<double>& marker) {
+	if (model == nullptr || bodyId < 0 || !marker.hasRgba) {
+		return;
+	}
+	if (bodyId >= model->nbody) {
+		return;
+	}
+
+	const int geomStart = model->body_geomadr[bodyId];
+	const int geomCount = model->body_geomnum[bodyId];
+	if (geomStart < 0 || geomCount <= 0) {
+		return;
+	}
+
+	for (int geomOffset = 0; geomOffset < geomCount; ++geomOffset) {
+		const int geomId = geomStart + geomOffset;
+		if (geomId < 0 || geomId >= model->ngeom) {
+			continue;
+		}
+
+		float* geomRgba = model->geom_rgba + 4 * geomId;
+		for (int channel = 0; channel < 4; ++channel) {
+			geomRgba[channel] = static_cast<float>(marker.rgba[channel]);
+		}
+	}
+}
+
+}  // namespace
+
+SimulationRunner::~SimulationRunner() = default;
+
+void SimulationRunner::init() {
+	setActiveRobotType(_robot);
+	if (_dashboardPublisher == nullptr) {
+		_dashboardPublisher =
+			std::make_unique<DashboardSharedMemoryPublisher>(robotTypeName(_robot));
+	}
+	const auto& controllerConfig = getControllerConfig(_robot);
+	_keyboardCommand.setWalkingLimits(controllerConfig.userCommandFilter.xDotMax,
+	                                  controllerConfig.userCommandFilter.yDotMax,
+	                                  controllerConfig.userCommandFilter.psiDotMax);
+	const auto& runtimeConfig = getRobotRuntimeConfig(_robot);
+	_modelPath = resolveProjectPath(runtimeConfig.modelXmlPath);
+	_footEndEffectorSource = runtimeConfig.footEndEffectorSource;
+	if (_telemetryPublisher == nullptr) {
+		_telemetryPublisher = std::make_unique<SharedMemoryTelemetryPublisher>(
+			robotTypeName(_robot),
+			_modelPath);
+	}
+
+	_telemetryInterval = 1.0 / 60.0;
+	if (const char* viewerHzEnv = std::getenv("CONVEXMPC_DASHBOARD_QPOS_HZ");
+	    viewerHzEnv != nullptr && std::string(viewerHzEnv).size() > 0) {
+		const double viewerHz = std::atof(viewerHzEnv);
+		if (std::isfinite(viewerHz) && viewerHz > 0.0) {
+			_telemetryInterval = 1.0 / viewerHz;
+		}
+	}
+
+	if (mjVERSION_HEADER != mj_version()) {
+		throw std::runtime_error("MuJoCo header/library version mismatch");
+	}
+
+	std::array<char, 1024> error{};
+	model = mj_loadXML(_modelPath.c_str(), nullptr, error.data(), error.size());
+	if (!model) {
+		throw std::runtime_error("mj_loadXML failed for " + _modelPath + ": " + error.data());
+	}
+
+	data = mj_makeData(model);
+	if (!data) {
+		mj_deleteModel(model);
+		throw std::runtime_error("mj_makeData failed");
+	}
+
+	configureSimulationModel(model);
+	mj_forward(model, data);
+	_keyboardInputEnableTime =
+		data->time + std::max(0.0, controllerConfig.startup.postInitStandingSettleTime);
+	_debugMocapBindings.clear();
+
+	std::cout << "Loaded MuJoCo model: " << _modelPath << '\n';
+	std::cout << "nq=" << model->nq
+			  << ", nv=" << model->nv
+			  << ", nu=" << model->nu << '\n';
+}
+
+void SimulationRunner::run() {
+	_keyboardCommandStartAttempted = false;
+	if (_headless) {
+		bool throttleHeadlessRealtime = false;
+		if (const char* realtimeEnv = std::getenv("CONVEXMPC_HEADLESS_REALTIME");
+		    realtimeEnv != nullptr && std::string(realtimeEnv).size() > 0) {
+			const std::string value(realtimeEnv);
+			throttleHeadlessRealtime = value != "0" && value != "false" && value != "FALSE";
+		}
+		runPhysicsLoop(throttleHeadlessRealtime, false);
+	} else {
+		_stopRequested = false;
+		_mainThread.init();
+
+		std::thread physicsThread(&SimulationRunner::runPhysicsLoop, this, true, true);
+		_mainThread.run();
+
+		_stopRequested = true;
+		physicsThread.join();
+	}
+
+	_keyboardCommand.stop();
+
+	mj_deleteData(data);
+	mj_deleteModel(model);
+	data = nullptr;
+	model = nullptr;
+	_debugMocapBindings.clear();
+}
+
+void SimulationRunner::runPhysicsLoop(bool throttleRealtime, bool syncViewer) {
+	const auto wallStart = std::chrono::steady_clock::now();
+	const double simStart = data->time;
+	double headlessStopTime = 0.0;
+	if (const char* stopEnv = std::getenv("CONVEXMPC_HEADLESS_STOP_TIME");
+	    stopEnv != nullptr && std::string(stopEnv).size() > 0) {
+		const double stopTime = std::atof(stopEnv);
+		if (std::isfinite(stopTime) && stopTime > 0.0) {
+			headlessStopTime = stopTime;
+		}
+	}
+	const auto& simulationConfig = getSimulationConfig();
+	const auto viewerSyncPeriod =
+		std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+			std::chrono::duration<double>(1.0 / simulationConfig.viewerSyncHz));
+	std::chrono::steady_clock::time_point nextViewerSync = std::chrono::steady_clock::now();
+
+	if (syncViewer) {
+		_mainThread.load(model, data, _modelPath);
+		_mainThread.sync();
+		nextViewerSync = std::chrono::steady_clock::now() + viewerSyncPeriod;
+	}
+
+	while (!_stopRequested && (!syncViewer || !_mainThread.exitRequested())) {
+		runRobotControl();
+		{
+			profiling::ScopedTimer timer(_mjStepTime);
+			mj_step(model, data);
+		}
+		++_iterations;
+
+		if (_telemetryPublisher != nullptr && data->time + 1e-12 >= _nextTelemetryTime) {
+			_telemetryPublisher->publish(_iterations,
+			                             data->time,
+			                             data->qpos,
+			                             static_cast<std::size_t>(model->nq));
+			_nextTelemetryTime = data->time + _telemetryInterval;
+		}
+
+		if (headlessStopTime > 0.0 && data->time - simStart >= headlessStopTime) {
+			_stopRequested = true;
+			if (syncViewer) {
+				_mainThread.requestExit();
+			}
+		}
+
+		if (syncViewer && sim::shouldSyncViewer(nextViewerSync, viewerSyncPeriod)) {
+			_mainThread.sync();
+		}
+
+		if (!throttleRealtime) {
+			continue;
+		}
+
+		const double simElapsed = data->time - simStart;
+		const double wallElapsed =
+			std::chrono::duration<double>(std::chrono::steady_clock::now() - wallStart).count();
+		if (simElapsed > wallElapsed) {
+			std::this_thread::sleep_for(std::chrono::duration<double>(simElapsed - wallElapsed));
+		}
+	}
+
+	if (profiling::enabled()) {
+		std::cout << '\n' << "[Profile] timing summary" << '\n';
+		if (_robotRunner != nullptr) {
+			_robotRunner->printProfilingSummary(std::cout);
+		}
+		std::cout << profiling::formatTimingStats("mj_step", _mjStepTime) << '\n';
+	}
+
+	std::cout << '\n' << "Simulated " << _iterations
+			  << " steps, sim time=" << data->time << " sec" << "\n\n";
+}
+
+void SimulationRunner::runRobotControl() {
+	if (_firstControllerRun) {
+
+		const auto robotSetup = setupRobotParams<double>(
+			_robot,
+			model,
+			_footEndEffectorSource);
+		_params = robotSetup.params;
+		_bindings = robotSetup.bindings;
+		_cheaterState.resize(_params);
+		_stateEstimate.resize(_params);
+		_legSwingDynamicsProvider =
+			std::make_unique<LegSwingDynamicsProvider>(
+				_robot, model, _params, _bindings, LegSwingDynamicsProviderMode::Lazy);
+		_robotRunner->init(&_params, model->opt.timestep, &_userCommand);
+		const bool standingControls =
+			standingKeyboardControlsFromRequest(_robotRunner->legDynamicsRequest());
+		_keyboardCommand.setStandingControls(standingControls);
+		_firstControllerRun = false;
+
+		std::cout << "[SimulationRunner] MuJoCo physics timestep (model->opt.timestep): "
+		          << model->opt.timestep << " sec" << std::endl;
+	}
+
+	updateReducedBodyMassPropertiesFromData(model, data, _bindings, _params);
+
+	fillCheaterState(model, data, _params, _bindings, _cheaterState);
+	_stateEstimator.update(_cheaterState, _stateEstimate);
+	const bool keyboardStartedNow = maybeStartKeyboardCommand(_stateEstimate.time);
+	_userCommand = _keyboardCommand.getUserCommand();
+	applyHeadlessUserCommandSchedule(_stateEstimate.time);
+	_robotRunner->prepareController(_stateEstimate);
+	const bool standingControls =
+		standingKeyboardControlsFromRequest(_robotRunner->legDynamicsRequest());
+	_keyboardCommand.setStandingControls(standingControls, keyboardStartedNow);
+	_legSwingDynamicsProvider->update(_stateEstimate, _robotRunner->legDynamicsRequest());
+
+	// if ((_iterations % 50) == 0) {
+		// 	std::cout << "[SimulationRunner] UserCommand | x_dot: " << _userCommand.x_dot
+		// 			  << "  y_dot: " << _userCommand.y_dot
+		// 			  << "  psi_dot: " << _userCommand.psi_dot << '\n';
+	// }
+	_robotRunner->run(_stateEstimate, _robotCommand);
+	if (_dashboardPublisher != nullptr) {
+		const UserCommand dashboardCommand = _robotRunner->dashboardUserCommand();
+		const ControllerBodyTargetDebugState bodyTargetDebug =
+			_robotRunner->dashboardBodyTargetDebugState();
+		_dashboardPublisher->publish(_iterations,
+		                             _stateEstimate.time,
+		                             reducedBodyStateForDashboard(_stateEstimate,
+		                                                          _params,
+		                                                          dashboardCommand,
+		                                                          bodyTargetDebug));
+	}
+	applyFixedJointCommands();
+	updateDebugVisualization();
+	applyRobotCommand();
+	writeHeadlessTelemetry();
+	writeStateTelemetry();
+}
+
+bool SimulationRunner::maybeStartKeyboardCommand(const double simTime) {
+	if (_keyboardCommandStartAttempted || simTime < _keyboardInputEnableTime) {
+		return false;
+	}
+
+	_keyboardCommandStartAttempted = true;
+
+	const char* disableEnv = std::getenv("CONVEXMPC_DISABLE_KEYBOARD");
+	if (disableEnv != nullptr && std::string(disableEnv) != "0" &&
+	    std::string(disableEnv) != "false" && std::string(disableEnv) != "FALSE") {
+		return false;
+	}
+
+	return _keyboardCommand.start();
+}
+
+void SimulationRunner::applyHeadlessUserCommandSchedule(const double simTime) {
+	const char* enableEnv = std::getenv("CONVEXMPC_HEADLESS_AUTO_WALK");
+	if (enableEnv == nullptr || std::string(enableEnv).empty() ||
+	    std::string(enableEnv) == "0" || std::string(enableEnv) == "false" ||
+	    std::string(enableEnv) == "FALSE") {
+		return;
+	}
+
+	double startTime = _keyboardInputEnableTime;
+	if (const char* startEnv = std::getenv("CONVEXMPC_HEADLESS_X_DOT_START_TIME");
+	    startEnv != nullptr && std::string(startEnv).size() > 0) {
+		const double parsed = std::atof(startEnv);
+		if (std::isfinite(parsed) && parsed >= 0.0) {
+			startTime = parsed;
+		}
+	}
+
+	double toggleTime = _keyboardInputEnableTime + 0.2;
+	if (const char* toggleEnv = std::getenv("CONVEXMPC_HEADLESS_WALK_TOGGLE_TIME");
+	    toggleEnv != nullptr && std::string(toggleEnv).size() > 0) {
+		const double parsed = std::atof(toggleEnv);
+		if (std::isfinite(parsed) && parsed >= 0.0) {
+			toggleTime = parsed;
+		}
+	}
+
+	double finalXDot = 0.0;
+	if (const char* finalEnv = std::getenv("CONVEXMPC_HEADLESS_X_DOT_FINAL");
+	    finalEnv != nullptr && std::string(finalEnv).size() > 0) {
+		const double parsed = std::atof(finalEnv);
+		if (std::isfinite(parsed)) {
+			finalXDot = parsed;
+		}
+	}
+
+	double rate = 0.0;
+	if (const char* rateEnv = std::getenv("CONVEXMPC_HEADLESS_X_DOT_RATE");
+	    rateEnv != nullptr && std::string(rateEnv).size() > 0) {
+		const double parsed = std::atof(rateEnv);
+		if (std::isfinite(parsed) && parsed > 0.0) {
+			rate = parsed;
+		}
+	}
+
+	if (simTime >= toggleTime) {
+		_userCommand.locomotion_mode_toggle_request = 1;
+	}
+	const std::vector<std::pair<double, double>> xDotProfile =
+		parseCommandProfile(std::getenv("CONVEXMPC_HEADLESS_X_DOT_PROFILE"));
+	if (!xDotProfile.empty()) {
+		_userCommand.x_dot = sampleCommandProfile(xDotProfile, simTime);
+	} else if (simTime >= startTime) {
+		const double rampedXDot = rate > 0.0
+		                              ? std::copysign(
+		                                    std::min(std::abs(finalXDot),
+		                                             rate * (simTime - startTime)),
+		                                    finalXDot)
+		                              : finalXDot;
+		_userCommand.x_dot = rampedXDot;
+	}
+
+	const std::vector<std::pair<double, double>> yDotProfile =
+		parseCommandProfile(std::getenv("CONVEXMPC_HEADLESS_Y_DOT_PROFILE"));
+	if (!yDotProfile.empty()) {
+		_userCommand.y_dot = sampleCommandProfile(yDotProfile, simTime);
+	}
+
+	const std::vector<std::pair<double, double>> heightOffsetProfile =
+		parseCommandProfile(std::getenv("CONVEXMPC_HEADLESS_HEIGHT_OFFSET_PROFILE"));
+	if (!heightOffsetProfile.empty()) {
+		_userCommand.body_height_offset_m = sampleCommandProfile(heightOffsetProfile, simTime);
+	}
+
+	if (!_headlessScheduleAnnounced) {
+		std::cout << "[HeadlessCommandSchedule] auto walking enabled, x_dot final="
+		          << finalXDot << " m/s, rate=" << rate
+		          << " m/s^2, toggle_time=" << toggleTime
+		          << " sec, start_time=" << startTime << " sec";
+		if (!xDotProfile.empty()) {
+			std::cout << ", x_dot_profile=" << std::getenv("CONVEXMPC_HEADLESS_X_DOT_PROFILE");
+		}
+		if (!yDotProfile.empty()) {
+			std::cout << ", y_dot_profile=" << std::getenv("CONVEXMPC_HEADLESS_Y_DOT_PROFILE");
+		}
+		if (!heightOffsetProfile.empty()) {
+			std::cout << ", height_offset_profile="
+			          << std::getenv("CONVEXMPC_HEADLESS_HEIGHT_OFFSET_PROFILE");
+		}
+		std::cout << '\n';
+		_headlessScheduleAnnounced = true;
+	}
+}
+
+void SimulationRunner::writeHeadlessTelemetry() {
+	if (!_headlessTelemetryInitialized) {
+		_headlessTelemetryInitialized = true;
+		const char* telemetryEnv = std::getenv("CONVEXMPC_HEADLESS_TELEMETRY");
+		if (!_headless || telemetryEnv == nullptr || std::string(telemetryEnv).empty() ||
+		    std::string(telemetryEnv) == "0") {
+			return;
+		}
+
+		const char* intervalEnv = std::getenv("CONVEXMPC_HEADLESS_TELEMETRY_DT");
+		if (intervalEnv != nullptr && std::string(intervalEnv).size() > 0) {
+			const double interval = std::atof(intervalEnv);
+			if (std::isfinite(interval) && interval > 0.0) {
+				_headlessTelemetryInterval = interval;
+			}
+		}
+
+		std::filesystem::path path =
+			std::string(telemetryEnv) == "1" ? defaultHeadlessTelemetryPath()
+			                                 : std::filesystem::path(telemetryEnv);
+		if (path.is_relative()) {
+			path = std::filesystem::current_path() / path;
+		}
+		if (path.has_parent_path()) {
+			std::filesystem::create_directories(path.parent_path());
+		}
+
+		_headlessTelemetryPath = path.string();
+		_headlessTelemetryOut = std::make_unique<std::ofstream>(path, std::ios::out | std::ios::trunc);
+		if (!_headlessTelemetryOut->is_open()) {
+			std::cerr << "[HeadlessTelemetry] failed to open " << _headlessTelemetryPath
+			          << std::endl;
+			_headlessTelemetryOut.reset();
+			return;
+		}
+
+		auto& out = *_headlessTelemetryOut;
+		out << "time,com_x,com_y,com_z,roll,pitch,yaw,vx,vy,vz,wx,wy,wz,"
+		       "target_x,target_y,target_z,target_roll,target_pitch,target_yaw,"
+		       "gait_recovery_hold,gait_recovery_hold_time,"
+		       "total_actual_fz,total_desired_fz,torque_norm,"
+		       "total_actual_mx,total_actual_my,total_actual_mz,"
+		       "total_desired_mx,total_desired_my,total_desired_mz";
+		for (const char* prefix : {"left", "right"}) {
+			out << ',' << prefix << "_mode"
+			    << ',' << prefix << "_contact"
+			    << ',' << prefix << "_cm_scheduled"
+			    << ',' << prefix << "_cm_estimated"
+			    << ',' << prefix << "_cm_active"
+			    << ',' << prefix << "_cm_early"
+			    << ',' << prefix << "_cm_late"
+			    << ',' << prefix << "_cm_liftoff_hold"
+			    << ',' << prefix << "_cm_search"
+			    << ',' << prefix << "_cm_fail"
+			    << ',' << prefix << "_cm_alpha"
+			    << ',' << prefix << "_cm_late_time"
+			    << ',' << prefix << "_cm_liftoff_hold_time"
+			    << ',' << prefix << "_fn"
+			    << ',' << prefix << "_foot_x"
+			    << ',' << prefix << "_foot_y"
+			    << ',' << prefix << "_foot_z"
+			    << ',' << prefix << "_actual_fx"
+			    << ',' << prefix << "_actual_fy"
+			    << ',' << prefix << "_actual_fz"
+			    << ',' << prefix << "_desired_fx"
+			    << ',' << prefix << "_desired_fy"
+			    << ',' << prefix << "_desired_fz"
+			    << ',' << prefix << "_desired_mx"
+			    << ',' << prefix << "_desired_my"
+			    << ',' << prefix << "_desired_mz"
+			    << ',' << prefix << "_force_error_norm";
+		}
+		out << '\n';
+		std::cout << "[HeadlessTelemetry] writing " << _headlessTelemetryPath
+		          << " dt=" << _headlessTelemetryInterval << " sec" << std::endl;
+	}
+
+	if (_headlessTelemetryOut == nullptr || data == nullptr ||
+	    data->time + 1e-12 < _nextHeadlessTelemetryTime) {
+		return;
+	}
+	_nextHeadlessTelemetryTime = data->time + _headlessTelemetryInterval;
+
+	const LegController<double>* legController =
+		_robotRunner != nullptr ? _robotRunner->legController() : nullptr;
+	if (legController == nullptr || _stateEstimate.legs.size() < 2 ||
+	    legController->commands.size() < 2) {
+		return;
+	}
+
+	const Vec3<double> com_W = reducedBodyComWorld(_stateEstimate, _params);
+	const Vec2<double> rollPitch = rollPitchFromQuaternion(_stateEstimate.torsoQuat_W);
+	const double totalActualFz =
+		_stateEstimate.legs[0].contactForce_W.z() + _stateEstimate.legs[1].contactForce_W.z();
+
+	Vec3<double> desiredForceLeft_W = Vec3<double>::Zero();
+	Vec3<double> desiredForceRight_W = Vec3<double>::Zero();
+	Vec3<double> desiredMomentLeft_W = Vec3<double>::Zero();
+	Vec3<double> desiredMomentRight_W = Vec3<double>::Zero();
+	if (legController->commands[0].mode == LegControlMode::StanceWrench) {
+		desiredForceLeft_W = -legController->commands[0].forceFeedForward_W;
+		desiredMomentLeft_W = -legController->commands[0].momentFeedForward_W;
+	}
+	if (legController->commands[1].mode == LegControlMode::StanceWrench) {
+		desiredForceRight_W = -legController->commands[1].forceFeedForward_W;
+		desiredMomentRight_W = -legController->commands[1].momentFeedForward_W;
+	}
+	const double totalDesiredFz = desiredForceLeft_W.z() + desiredForceRight_W.z();
+	const Vec3<double> totalActualMoment_W =
+		(_stateEstimate.legs[0].footPos_W - com_W).cross(_stateEstimate.legs[0].contactForce_W) +
+		(_stateEstimate.legs[1].footPos_W - com_W).cross(_stateEstimate.legs[1].contactForce_W);
+	const Vec3<double> totalDesiredMoment_W =
+		(_stateEstimate.legs[0].footPos_W - com_W).cross(desiredForceLeft_W) +
+		desiredMomentLeft_W +
+		(_stateEstimate.legs[1].footPos_W - com_W).cross(desiredForceRight_W) +
+		desiredMomentRight_W;
+	const std::vector<ControllerContactDebugLegState> contactDebugStates =
+		(_robotRunner != nullptr && _robotRunner->_robot_ctrl != nullptr)
+			? _robotRunner->_robot_ctrl->contactDebugLegStates()
+			: std::vector<ControllerContactDebugLegState>{};
+	const ControllerBodyTargetDebugState bodyTargetDebug =
+		(_robotRunner != nullptr && _robotRunner->_robot_ctrl != nullptr)
+			? _robotRunner->_robot_ctrl->bodyTargetDebugState()
+			: ControllerBodyTargetDebugState{};
+
+	auto& out = *_headlessTelemetryOut;
+	out << std::fixed << std::setprecision(6)
+	    << _stateEstimate.time << ',';
+	writeVec3Csv(out, com_W);
+	out << ',' << rollPitch.x()
+	    << ',' << rollPitch.y()
+	    << ',' << _stateEstimate.psi
+	    << ',';
+	writeVec3Csv(out, _stateEstimate.torsoLinVel_W);
+	out << ',';
+	writeVec3Csv(out, _stateEstimate.torsoAngVel_W);
+	out << ',';
+	writeVec3Csv(out,
+	             bodyTargetDebug.initialized ? bodyTargetDebug.position_W
+	                                         : Vec3<double>::Constant(std::numeric_limits<double>::quiet_NaN()));
+	out << ',';
+	writeVec3Csv(out,
+	             bodyTargetDebug.initialized ? bodyTargetDebug.euler_W
+	                                         : Vec3<double>::Constant(std::numeric_limits<double>::quiet_NaN()));
+	out << ',' << static_cast<int>(bodyTargetDebug.gaitRecoveryHoldActive)
+	    << ',' << bodyTargetDebug.gaitRecoveryHoldTime
+	    << ',' << totalActualFz
+	    << ',' << totalDesiredFz
+	    << ',' << _robotCommand.tau.norm()
+	    << ',';
+	writeVec3Csv(out, totalActualMoment_W);
+	out << ',';
+	writeVec3Csv(out, totalDesiredMoment_W);
+
+	for (std::size_t leg = 0; leg < 2; ++leg) {
+		const auto& state = _stateEstimate.legs[leg];
+		const auto& command = legController->commands[leg];
+		const Side side = leg == 0 ? Side::Left : Side::Right;
+		const ControllerContactDebugLegState* contactDebug =
+			contactDebugForSide(contactDebugStates, side);
+		Vec3<double> desiredForce_W = Vec3<double>::Zero();
+		Vec3<double> desiredMoment_W = Vec3<double>::Zero();
+		if (command.mode == LegControlMode::StanceWrench) {
+			desiredForce_W = -command.forceFeedForward_W;
+			desiredMoment_W = -command.momentFeedForward_W;
+		}
+		const double forceErrorNorm = (desiredForce_W - state.contactForce_W).norm();
+
+		out << ',' << legControlModeCode(command.mode)
+		    << ',' << static_cast<int>(state.contact)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->scheduledContact) : -1)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->estimatedContact) : -1)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->activeContact) : -1)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->earlyContact) : -1)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->lateContact) : -1)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->liftoffHold) : -1)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->searchModeActive) : -1)
+		    << ',' << (contactDebug != nullptr ? static_cast<int>(contactDebug->recoveryFailure) : -1)
+		    << ',' << (contactDebug != nullptr ? contactDebug->contactRampAlpha : -1.0)
+		    << ',' << (contactDebug != nullptr ? contactDebug->lateContactTime : -1.0)
+		    << ',' << (contactDebug != nullptr ? contactDebug->liftoffHoldTime : -1.0)
+		    << ',' << state.contactNormalForce
+		    << ',' << state.footPos_W.x()
+		    << ',' << state.footPos_W.y()
+		    << ',' << state.footPos_W.z()
+		    << ',';
+		writeVec3Csv(out, state.contactForce_W);
+		out << ',';
+		writeVec3Csv(out, desiredForce_W);
+		out << ',';
+		writeVec3Csv(out, desiredMoment_W);
+		out << ',' << forceErrorNorm;
+	}
+	out << '\n';
+}
+
+void SimulationRunner::writeStateTelemetry() {
+	if (!_stateTelemetryInitialized) {
+		_stateTelemetryInitialized = true;
+		const char* telemetryEnv = std::getenv("CONVEXMPC_STATE_TELEMETRY");
+		if (telemetryEnv == nullptr || std::string(telemetryEnv).empty() ||
+		    std::string(telemetryEnv) == "0") {
+			return;
+		}
+
+		const char* intervalEnv = std::getenv("CONVEXMPC_STATE_TELEMETRY_DT");
+		if (intervalEnv != nullptr && std::string(intervalEnv).size() > 0) {
+			const double interval = std::atof(intervalEnv);
+			if (std::isfinite(interval) && interval > 0.0) {
+				_stateTelemetryInterval = interval;
+			}
+		}
+
+		std::filesystem::path path =
+			std::string(telemetryEnv) == "1" ? defaultStateTelemetryPath()
+			                                 : std::filesystem::path(telemetryEnv);
+		if (path.is_relative()) {
+			path = std::filesystem::current_path() / path;
+		}
+		if (path.has_parent_path()) {
+			std::filesystem::create_directories(path.parent_path());
+		}
+
+		_stateTelemetryPath = path.string();
+		_stateTelemetryOut = std::make_unique<std::ofstream>(path, std::ios::out | std::ios::trunc);
+		if (!_stateTelemetryOut->is_open()) {
+			std::cerr << "[StateTelemetry] failed to open " << _stateTelemetryPath << std::endl;
+			_stateTelemetryOut.reset();
+			return;
+		}
+
+		auto& out = *_stateTelemetryOut;
+		out << "time,com_x,com_y,com_z,com_vx,com_vy,com_vz,com_wx,com_wy,com_wz,"
+		       "roll,pitch,yaw,cmd_x_dot,cmd_y_dot,cmd_psi_dot";
+		static constexpr std::array<const char*, 4> kJointNames = {"abad", "hip", "knee", "ankle"};
+		for (const char* prefix : {"left", "right"}) {
+			const std::size_t jointCount =
+				_stateEstimate.legs.empty() ? 0 : _stateEstimate.legs[0].q.size();
+			for (std::size_t j = 0; j < jointCount; ++j) {
+				const std::string jointName =
+					j < kJointNames.size() ? kJointNames[j] : ("j" + std::to_string(j));
+				out << ',' << prefix << '_' << jointName << "_q"
+				    << ',' << prefix << '_' << jointName << "_qd"
+				    << ',' << prefix << '_' << jointName << "_tau"
+				    << ',' << prefix << '_' << jointName << "_qacc";
+			}
+		}
+		out << '\n';
+		std::cout << "[StateTelemetry] writing " << _stateTelemetryPath
+		          << " dt=" << _stateTelemetryInterval << " sec" << std::endl;
+	}
+
+	if (_stateTelemetryOut == nullptr || data == nullptr ||
+	    data->time + 1e-12 < _nextStateTelemetryTime) {
+		return;
+	}
+	_nextStateTelemetryTime = data->time + _stateTelemetryInterval;
+
+	if (_stateEstimate.legs.size() < 2) {
+		return;
+	}
+
+	const Vec3<double> com_W = reducedBodyComWorld(_stateEstimate, _params);
+	const Vec3<double> comVel_W = reducedBodyComVelocityWorld(_stateEstimate, _params);
+	const Vec2<double> rollPitch = rollPitchFromQuaternion(_stateEstimate.torsoQuat_W);
+
+	auto& out = *_stateTelemetryOut;
+	out << std::fixed << std::setprecision(6) << _stateEstimate.time << ',';
+	writeVec3Csv(out, com_W);
+	out << ',';
+	writeVec3Csv(out, comVel_W);
+	out << ',';
+	writeVec3Csv(out, _stateEstimate.torsoAngVel_W);
+	out << ',' << rollPitch.x() << ',' << rollPitch.y() << ',' << _stateEstimate.psi;
+	out << ',' << _userCommand.x_dot << ',' << _userCommand.y_dot << ',' << _userCommand.psi_dot;
+
+	for (std::size_t leg = 0; leg < 2; ++leg) {
+		const auto& state = _stateEstimate.legs[leg];
+		const bool haveParamsForLeg = leg < _params.legs.size() &&
+			_params.legs[leg].joints.qd_idx.size() == static_cast<std::size_t>(state.qd.size());
+		for (Eigen::Index j = 0; j < state.q.size(); ++j) {
+			const double q = state.q[j];
+			const double qd = j < state.qd.size() ? state.qd[j] : 0.0;
+			const double tau = j < state.tauEstimate.size() ? state.tauEstimate[j] : 0.0;
+			double qacc = 0.0;
+			if (haveParamsForLeg && data != nullptr && model != nullptr) {
+				const int nvIdx = _params.legs[leg].joints.qd_idx[static_cast<std::size_t>(j)];
+				if (nvIdx >= 0 && nvIdx < model->nv) {
+					qacc = static_cast<double>(data->qacc[nvIdx]);
+				}
+			}
+			out << ',' << q << ',' << qd << ',' << tau << ',' << qacc;
+		}
+	}
+	out << '\n';
+}
+
+void SimulationRunner::applyFixedJointCommands() {
+	if (model == nullptr || data == nullptr || _robotCommand.tau.size() != model->nu) {
+		return;
+	}
+
+	for (const auto& joint : _params.fixedJoints) {
+		const double q = static_cast<double>(data->qpos[joint.q_idx]);
+		const double qd = static_cast<double>(data->qvel[joint.qd_idx]);
+		_robotCommand.tau[joint.actuator_idx] =
+			joint.kp * (joint.qDefault - q) - joint.kd * qd;
+	}
+}
+
+void SimulationRunner::updateDebugVisualization() {
+	if (model == nullptr || data == nullptr || _robotRunner == nullptr || _robotRunner->_robot_ctrl == nullptr) {
+		return;
+	}
+
+	DebugVizState<double> debugViz;
+	_robotRunner->_robot_ctrl->collectDebugVisualization(debugViz);
+
+	if (debugViz.markers.empty()) {
+		return;
+	}
+
+	for (const auto& marker : debugViz.markers) {
+		if (!marker.active) {
+			continue;
+		}
+
+		auto it = std::find_if(_debugMocapBindings.begin(),
+							   _debugMocapBindings.end(),
+							   [&](const DebugMocapBinding& binding) {
+								   return binding.name == marker.name;
+							   });
+
+		if (it == _debugMocapBindings.end()) {
+			DebugMocapBinding binding;
+			binding.name = marker.name;
+			binding.bodyId = mj_name2id(model, mjOBJ_BODY, marker.name.c_str());
+			if (binding.bodyId < 0) {
+				continue;
+			}
+
+			binding.mocapId = model->body_mocapid[binding.bodyId];
+			if (binding.mocapId < 0) {
+				continue;
+			}
+
+			_debugMocapBindings.push_back(binding);
+			it = std::prev(_debugMocapBindings.end());
+		}
+
+		applyMarkerColor(model, it->bodyId, marker);
+
+		const Eigen::Index posOffset = static_cast<Eigen::Index>(3 * it->mocapId);
+		data->mocap_pos[posOffset + 0] = marker.position_W[0];
+		data->mocap_pos[posOffset + 1] = marker.position_W[1];
+		data->mocap_pos[posOffset + 2] = marker.position_W[2];
+
+		const Eigen::Index quatOffset = static_cast<Eigen::Index>(4 * it->mocapId);
+		data->mocap_quat[quatOffset + 0] = marker.orientation_W.w();
+		data->mocap_quat[quatOffset + 1] = marker.orientation_W.x();
+		data->mocap_quat[quatOffset + 2] = marker.orientation_W.y();
+		data->mocap_quat[quatOffset + 3] = marker.orientation_W.z();
+	}
+}
+
+void SimulationRunner::applyRobotCommand() {
+	if (_robotCommand.tau.size() != model->nu) {
+		throw std::runtime_error("RobotCommand torque dimension does not match model->nu");
+	}
+
+	for (int i = 0; i < model->nu; ++i) {
+		const double tau = _robotCommand.tau[i];
+		if (model->actuator_ctrllimited[i]) {
+			const double lo = static_cast<double>(model->actuator_ctrlrange[2 * i + 0]);
+			const double hi = static_cast<double>(model->actuator_ctrlrange[2 * i + 1]);
+			data->ctrl[i] = std::clamp(tau, lo, hi);
+		} else {
+			data->ctrl[i] = tau;
+		}
+	}
+}

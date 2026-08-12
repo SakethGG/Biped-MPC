@@ -1,0 +1,96 @@
+{
+  "_schema": {
+    "description": "Pre-built actuators for legged robots. Use with --actuator-mode catalog. Specs reflect joint-side (post-gearbox) properties. Add custom entries by appending to the `actuators` array; only `name`, `peak_torque`, `peak_speed`, `mass`, `cost` are required, the others have sensible defaults.",
+    "units": {
+      "peak_torque": "N*m (joint-side peak / continuous-peak torque)",
+      "peak_speed": "rad/s (joint-side no-load speed)",
+      "eta": "[-] (overall transmission efficiency, 0..1)",
+      "Kt": "N*m/A (motor torque constant, joint-side after gearbox if known; optional)",
+      "R": "ohm (motor terminal resistance; optional)",
+      "ratio": "[-] (gear ratio; optional, used for power model fallback)",
+      "mass": "kg",
+      "cost": "USD",
+      "width": "m (actuator outer diameter / housing width)"
+    },
+    "fields": ["name", "peak_torque", "peak_speed", "eta", "Kt", "R", "ratio", "mass", "cost", "width", "notes"]
+  },
+  "actuators": [
+    {
+      "name": "Unitree-A1",
+      "peak_torque": 33.5, "peak_speed": 21.0, "eta": 0.85,
+      "Kt": 0.0707, "R": 0.13, "ratio": 9.1,
+      "mass": 0.605, "cost": 600.0, "width": 0.080,
+      "notes": "Unitree A1/Go1-class quasi-direct-drive motor (M107)."
+    },
+    {
+      "name": "Unitree-B1",
+      "peak_torque": 360.0, "peak_speed": 22.0, "eta": 0.85,
+      "Kt": 0.130, "R": 0.10, "ratio": 6.33,
+      "mass": 2.20, "cost": 1500.0, "width": 0.110,
+      "notes": "Unitree B1 large quadruped actuator (~30 kg robot class)."
+    },
+    {
+      "name": "MIT-Cheetah-3",
+      "peak_torque": 34.0, "peak_speed": 25.0, "eta": 0.85,
+      "Kt": 0.108, "R": 0.105, "ratio": 6.0,
+      "mass": 0.50, "cost": 700.0, "width": 0.096,
+      "notes": "T-Motor U8 + 6:1 planetary; Katz 2018 MIT Mini-Cheetah actuator."
+    },
+    {
+      "name": "TMotor-AK80-9",
+      "peak_torque": 24.0, "peak_speed": 38.0, "eta": 0.82,
+      "Kt": 0.091, "R": 0.16, "ratio": 9.0,
+      "mass": 0.485, "cost": 530.0, "width": 0.098,
+      "notes": "CubeMars AK80-9 QDD actuator (CAN bus)."
+    },
+    {
+      "name": "TMotor-AK80-6",
+      "peak_torque": 12.0, "peak_speed": 50.0, "eta": 0.85,
+      "Kt": 0.091, "R": 0.16, "ratio": 6.0,
+      "mass": 0.485, "cost": 510.0, "width": 0.098,
+      "notes": "CubeMars AK80-6 QDD; lower ratio = faster joint."
+    },
+    {
+      "name": "TMotor-AK10-9",
+      "peak_torque": 48.0, "peak_speed": 30.0, "eta": 0.82,
+      "Kt": 0.160, "R": 0.10, "ratio": 9.0,
+      "mass": 0.96, "cost": 720.0, "width": 0.110,
+      "notes": "CubeMars AK10-9 high-torque QDD actuator."
+    },
+    {
+      "name": "ANYdrive-3",
+      "peak_torque": 40.0, "peak_speed": 12.0, "eta": 0.75,
+      "Kt": 0.082, "R": 0.18, "ratio": 50.0,
+      "mass": 1.10, "cost": 4000.0, "width": 0.105,
+      "notes": "ANYbotics ANYdrive 3 (Harmonic-drive based, ANYmal C robot)."
+    },
+    {
+      "name": "HEBI-X8-16",
+      "peak_torque": 38.0, "peak_speed": 7.5, "eta": 0.70,
+      "Kt": 0.045, "R": 0.30, "ratio": 1500.0,
+      "mass": 0.460, "cost": 2900.0, "width": 0.087,
+      "notes": "HEBI X8-16 series-elastic actuator (very high ratio, slow)."
+    },
+    {
+      "name": "ODrive-D5065-DD",
+      "peak_torque": 5.0, "peak_speed": 200.0, "eta": 0.95,
+      "Kt": 0.026, "R": 0.039, "ratio": 1.0,
+      "mass": 0.41, "cost": 320.0, "width": 0.070,
+      "notes": "ODrive direct-drive (no gearbox); D5065 motor."
+    },
+    {
+      "name": "MAB-MD80",
+      "peak_torque": 7.0, "peak_speed": 110.0, "eta": 0.88,
+      "Kt": 0.054, "R": 0.20, "ratio": 6.25,
+      "mass": 0.38, "cost": 480.0, "width": 0.080,
+      "notes": "MAB Robotics MD80 QDD actuator (Honey Badger quadruped)."
+    },
+    {
+      "name": "Bota-Roboticer-50",
+      "peak_torque": 50.0, "peak_speed": 15.0, "eta": 0.80,
+      "Kt": 0.10, "R": 0.12, "ratio": 25.0,
+      "mass": 0.95, "cost": 1800.0, "width": 0.098,
+      "notes": "Compact planetary servo for medium-size legged platforms."
+    }
+  ]
+}

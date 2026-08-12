@@ -1,0 +1,10 @@
+link,mass_kg,link_length_m,Ixx,Iyy,Izz,joint,motor,force_or_torque_min,force_or_torque_max
+base_Link,12.0,0.767,0.103699,0.109001,0.140501,,,,
+abad_R_Link,0.6,0.20735805385853717,0.0006997,0.0004984,0.0004984,abad_R_Joint,abad_R_motor,-80.0,80.0
+hip_R_Link,0.9,0.07480066844621108,0.015929,0.014567,0.001878,hip_R_Joint,hip_R_motor,-80.0,80.0
+knee_R_Link,1.0,0.3522218416183187,0.04326,0.039749,0.003806,knee_R_Joint,knee_R_motor,-80.0,80.0
+ankle_R_Link,0.7,0.3435109358986989,0.002619,0.002386,0.0003387,ankle_R_Joint,ankle_R_motor,-20.0,20.0
+abad_L_Link,0.6,0.20735805385853717,0.0006997,0.0004984,0.0004984,abad_L_Joint,abad_L_motor,-80.0,80.0
+hip_L_Link,0.9,0.07480066844621108,0.015929,0.014567,0.001878,hip_L_Joint,hip_L_motor,-80.0,80.0
+knee_L_Link,1.0,0.3522218416183187,0.04326,0.039749,0.003806,knee_L_Joint,knee_L_motor,-80.0,80.0
+ankle_L_Link,0.7,0.3435109358986989,0.002619,0.002386,0.0003387,ankle_L_Joint,ankle_L_motor,-20.0,20.0

@@ -1,0 +1,139 @@
+#ifndef MY_CONTROLLER_H
+#define MY_CONTROLLER_H
+
+#include <iosfwd>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "Controllers/ControlGains.h"
+#include "ContactManager.h"
+#include "ConvexMPC.h"
+#include "GaitScheduler.h"
+#include "HorizonClock.h"
+#include "LocomotionFSM.h"
+#include "MPCFormulation.h"
+#include "RobotController.h"
+#include "Utilities/Timing.h"
+#include "SwingFootPlanner.h"
+#include "SwingFootTrajectory.h"
+
+class MyController : public RobotController {
+public:
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+	MyController();
+	virtual ~MyController() {}
+
+	virtual void initializeController() override;
+	virtual void prepareController() override;
+	virtual LegDynamicsRequest legDynamicsRequest() const override;
+	virtual UserCommand dashboardUserCommand() const override;
+
+	virtual void runController() override;
+	virtual void printProfilingSummary(std::ostream& out) const override;
+	virtual void collectDebugVisualization(DebugVizState<double>& debugViz) const override;
+	virtual std::vector<ControllerContactDebugLegState> contactDebugLegStates() const override;
+	virtual ControllerBodyTargetDebugState bodyTargetDebugState() const override;
+	virtual bool usesStandingOnlyLegDynamics() const override;
+
+private:
+	struct BodyTargetState {
+		EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+		Vec3<double> nominalPosition_W = Vec3<double>::Zero();
+		Vec3<double> position_W = Vec3<double>::Zero();
+		double nominalHeight_W{0.0};
+		Vec3<double> euler_W = Vec3<double>::Zero();
+		Vec3<double> eulerSeed_W = Vec3<double>::Zero();
+		bool initialized{false};
+	};
+
+	struct LegRuntimeState {
+		EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+		SwingFootTrajectory swingTrajectory;
+		double touchdownYaw_W{0.0};
+		bool wasInStance{true};
+		bool wasSearchMode{false};
+	};
+
+	static Mat3<double> makeDiagonal(double x, double y, double z);
+
+	void initializeRuntimeObjects();
+	int findLegIndex(Side side) const;
+	Vec13<double> buildCurrentMpcState() const;
+	void seedBodyTargetFromCurrentState();
+	void resetSwingState();
+	void applyLocomotionOutput(const LocomotionFSMOutput& output);
+	LocomotionFSMOutput syncLocomotionFSM();
+	void updateFilteredUserCommand(double dt);
+	void updateBodyTarget(const Vec13<double>& x0, double dt);
+	bool activeContactForSide(Side side, double time) const;
+	double contactRampAlphaForSide(Side side) const;
+	void updateSwingTrajectories(const DesiredFootPositions& desiredFootPositions);
+	void updateTouchdownDebugTarget(const DesiredFootPositions& desiredFootPositions);
+	double swingFootYawTargetWorld() const;
+	double swingFootYawTargetWorld(Side side) const;
+	void maybeUpdateMpc(const Vec13<double>& x0,
+		                   const DesiredFootPositions& desiredFootPositions);
+	void writeLegCommands();
+	void writeStandingLegCommands();
+	void queueStandingMpcDebugLog(const std::string& source,
+		                          double requestTime,
+		                          double triggerTime);
+	void updateStandingMpcDebugRequest();
+	void maybeWriteStandingMpcDebugLog(const Vec13<double>& x0,
+		                               const DesiredFootPositions& desiredFootPositions);
+
+	bool _initialized{false};
+	u64 _iteration{0};
+	u64 _lastMpcIteration{0};
+	profiling::TimingStats _runControllerTime;
+	profiling::TimingStats _mpcSetupTime;
+	profiling::TimingStats _gaitConstraintTime;
+	profiling::TimingStats _referenceTrajectoryTime;
+	profiling::TimingStats _mpcFormulationTime;
+	profiling::TimingStats _mpcUpdateInputTime;
+	profiling::TimingStats _mpcSolveTime;
+	bool _standingMpcDebugLogPending{false};
+	bool _standingMpcDebugLogReady{false};
+	unsigned long long _lastStandingMpcDebugLogRequest{0};
+	unsigned long long _lastLocomotionModeToggleRequest{0};
+	std::size_t _nextStandingMpcDebugTriggerIndex{0};
+	std::string _standingMpcDebugRequestSource;
+	double _standingMpcDebugRequestTime{0.0};
+	double _standingMpcDebugTriggerTime{0.0};
+	double _lastControlTime{0.0};
+	Vec12<double> _stanceWrenchWorld = Vec12<double>::Zero();
+	vectorAligned<LegRuntimeState> _legRuntime;
+	UserCommand _filteredUserCommand{};
+	bool _filteredUserCommandInitialized{false};
+	std::unique_ptr<HorizonClock> _horizonClock;
+	std::unique_ptr<GaitScheduler> _gaitScheduler;
+	std::unique_ptr<ContactManager> _contactManager;
+	std::unique_ptr<LocomotionFSM> _locomotionFSM;
+	std::unique_ptr<SwingFootPlanner> _swingFootPlanner;
+	std::unique_ptr<MPCFormulation> _mpcFormulation;
+	std::unique_ptr<ConvexMPC> _convexMPC;
+	ReferenceTrajectoryOutput _referenceTrajectoryOutput;
+	MPCFormulationOutput _mpcFormulationOutput;
+	Vec3<double> _swingNaturalFrequency = Vec3<double>::Zero();
+	Mat3<double> _swingKd = Mat3<double>::Zero();
+	double _swingHeight{0.0};
+	u64 _iterationsBetweenMpc{10};
+	LocomotionMode _locomotionMode{LocomotionMode::Walking};
+	LegDynamicsRequest _legDynamicsRequest;
+	bool _zeroMotionCommand{false};
+	profiling::TimingStats _torqueComputeTime;
+	BodyTargetState _bodyTarget;
+	Vec3<double> _leftTouchdownTarget_W = Vec3<double>::Zero();
+	Vec3<double> _rightTouchdownTarget_W = Vec3<double>::Zero();
+	double _leftTouchdownTargetYaw_W{0.0};
+	double _rightTouchdownTargetYaw_W{0.0};
+	bool _leftTouchdownTargetInitialized{false};
+	bool _rightTouchdownTargetInitialized{false};
+
+};
+
+#endif  // MY_CONTROLLER_H

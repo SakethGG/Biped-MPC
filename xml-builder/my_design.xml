@@ -1,0 +1,155 @@
+<mujoco model="design_biped">
+  <compiler angle="radian" autolimits="true"/>
+
+  <option timestep="0.002" iterations="50" ls_iterations="50" integrator="implicitfast" cone="elliptic">
+    <flag eulerdamp="disable"/>
+  </option>
+
+  <visual>
+    <headlight ambient="0.3 0.3 0.3" diffuse="0.6 0.6 0.6" specular="0.1 0.1 0.1"/>
+    <global azimuth="120" elevation="-15"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+              rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+  </asset>
+
+  <default>
+    <geom contype="1" conaffinity="0" friction="0.9 0.02 0.001" solimp="0.9 0.95 0.001" solref="0.01 1"/>
+    <default class="visual">
+      <geom contype="0" conaffinity="0" group="2" rgba="0.7 0.7 0.75 1"/>
+    </default>
+    <default class="collision">
+      <geom contype="1" conaffinity="1" group="3" rgba="0.7 0.5 0.3 0.4"/>
+    </default>
+    <default class="abad">
+      <joint damping="1.000000" armature="0.050000" frictionloss="0.100000"/>
+      <motor ctrlrange="-79.819792 79.819792" forcerange="-79.819792 79.819792"/>
+    </default>
+    <default class="hip">
+      <joint damping="1.000000" armature="0.050000" frictionloss="0.100000"/>
+      <motor ctrlrange="-79.819792 79.819792" forcerange="-79.819792 79.819792"/>
+    </default>
+    <default class="knee">
+      <joint damping="1.000000" armature="0.050000" frictionloss="0.100000"/>
+      <motor ctrlrange="-79.819792 79.819792" forcerange="-79.819792 79.819792"/>
+    </default>
+    <default class="ankle">
+      <joint damping="0.500000" armature="0.020000" frictionloss="0.010000"/>
+      <motor ctrlrange="-19.972333 19.972333" forcerange="-19.972333 19.972333"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" size="10 10 0.05" material="groundplane" friction="0.9 0.02 0.001"
+          contype="1" conaffinity="1"/>
+
+    <body name="base_Link" pos="0 0 0.767000">
+      <freejoint name="root"/>
+      <inertial pos="0 0 -0.052734" mass="16.692155" diaginertia="0.225043 0.229554 0.142421"/>
+      <site name="imu" pos="0 0 0" size="0.01"/>
+      <geom class="visual" type="box" size="0.135000 0.130000 0.095000" rgba="0.79216 0.81961 0.93333 1"/>
+      <geom class="collision" type="box" size="0.135000 0.130000 0.095000"/>
+      <geom class="visual" type="cylinder" size="0.048300 0.027250" pos="0.061400 -0.081700 -0.187500" quat="1 0 1 0"/>
+
+    <body name="abad_R_Link" pos="0.034150 -0.081700 -0.187500">
+      <inertial pos="-0.068300 -0.030500 0" mass="2.347312" diaginertia="0.001950 0.002738 0.001950"/>
+      <joint class="abad" name="abad_R_Joint" axis="-1.000000 0 0" range="-0.383970 1.396260"/>
+      <geom class="visual" type="cylinder" size="0.048300 0.027250" pos="-0.068300 -0.030500 0" quat="1 1 0 0"/>
+      <geom class="collision" type="cylinder" size="0.048300 0.027250" pos="-0.068300 -0.030500 0" quat="1 1 0 0"/>
+
+        <body name="hip_R_Link" pos="-0.068300 -0.030500 0">
+          <inertial pos="0 -0.041308 -0.025339" mass="2.741801" diaginertia="0.016156 0.017373 0.001685"/>
+          <joint class="hip" name="hip_R_Joint" axis="0 -1 0" range="-1.396260 1.012290"/>
+          <geom class="visual" type="cylinder" size="0.048300 0.016000" pos="0 -0.048250 0" quat="1 1 0 0"/>
+          <geom class="collision" type="cylinder" size="0.048300 0.016000" pos="0 -0.048250 0" quat="1 1 0 0"/>
+          <geom class="visual" type="box" size="0.025000 0.016000 0.176111" pos="0 0 -0.176111"/>
+          <geom class="collision" type="box" size="0.025000 0.016000 0.176111" pos="0 0 -0.176111"/>
+
+            <body name="knee_R_Link" pos="0 0 -0.352222">
+              <inertial pos="0 0 -0.292675" mass="1.443898" diaginertia="0.005744 0.005710 0.000618"/>
+              <joint class="knee" name="knee_R_Joint" axis="0 -1 0" range="-1.213570 1.172670"/>
+              <geom class="visual" type="box" size="0.012500 0.016000 0.171755" pos="0 0 -0.171755"/>
+              <geom class="collision" type="box" size="0.012500 0.016000 0.171755" pos="0 0 -0.171755"/>
+              <geom class="visual" type="cylinder" size="0.030000 0.027250" pos="0 0 -0.311261" quat="1 1 0 0"/>
+              <geom class="collision" type="cylinder" size="0.030000 0.027250" pos="0 0 -0.311261" quat="1 1 0 0"/>
+
+                <body name="ankle_R_Link" pos="0 0 -0.343511">
+                  <inertial pos="0.010000 0 -0.035000" mass="0.300000" diaginertia="0.000145 0.001023 0.001123"/>
+                  <joint class="ankle" name="ankle_R_Joint" axis="0 -1 0" range="-0.791917 1.308990"/>
+                  <geom class="visual" type="box" size="0.100000 0.035000 0.015000" pos="0.010000 0 -0.035000"/>
+                  <geom class="collision" name="foot_R_collision" type="box" size="0.100000 0.035000 0.015000" pos="0.010000 0 -0.035000"/>
+                  <site name="foot_R" pos="0.010000 0 -0.050000" size="0.01"/>
+                </body>
+            </body>
+        </body>
+    </body>
+      <geom class="visual" type="cylinder" size="0.048300 0.027250" pos="0.061400 0.081700 -0.187500" quat="1 0 1 0"/>
+
+    <body name="abad_L_Link" pos="0.034150 0.081700 -0.187500">
+      <inertial pos="-0.068300 0.030500 0" mass="2.347312" diaginertia="0.001950 0.002738 0.001950"/>
+      <joint class="abad" name="abad_L_Joint" axis="1.000000 0 0" range="-0.383970 1.396260"/>
+      <geom class="visual" type="cylinder" size="0.048300 0.027250" pos="-0.068300 0.030500 0" quat="1 1 0 0"/>
+      <geom class="collision" type="cylinder" size="0.048300 0.027250" pos="-0.068300 0.030500 0" quat="1 1 0 0"/>
+
+        <body name="hip_L_Link" pos="-0.068300 0.030500 0">
+          <inertial pos="0 0.041308 -0.025339" mass="2.741801" diaginertia="0.016156 0.017373 0.001685"/>
+          <joint class="hip" name="hip_L_Joint" axis="0 -1 0" range="-1.396260 1.012290"/>
+          <geom class="visual" type="cylinder" size="0.048300 0.016000" pos="0 0.048250 0" quat="1 1 0 0"/>
+          <geom class="collision" type="cylinder" size="0.048300 0.016000" pos="0 0.048250 0" quat="1 1 0 0"/>
+          <geom class="visual" type="box" size="0.025000 0.016000 0.176111" pos="0 0 -0.176111"/>
+          <geom class="collision" type="box" size="0.025000 0.016000 0.176111" pos="0 0 -0.176111"/>
+
+            <body name="knee_L_Link" pos="0 0 -0.352222">
+              <inertial pos="0 0 -0.292675" mass="1.443898" diaginertia="0.005744 0.005710 0.000618"/>
+              <joint class="knee" name="knee_L_Joint" axis="0 -1 0" range="-1.213570 1.172670"/>
+              <geom class="visual" type="box" size="0.012500 0.016000 0.171755" pos="0 0 -0.171755"/>
+              <geom class="collision" type="box" size="0.012500 0.016000 0.171755" pos="0 0 -0.171755"/>
+              <geom class="visual" type="cylinder" size="0.030000 0.027250" pos="0 0 -0.311261" quat="1 1 0 0"/>
+              <geom class="collision" type="cylinder" size="0.030000 0.027250" pos="0 0 -0.311261" quat="1 1 0 0"/>
+
+                <body name="ankle_L_Link" pos="0 0 -0.343511">
+                  <inertial pos="0.010000 0 -0.035000" mass="0.300000" diaginertia="0.000145 0.001023 0.001123"/>
+                  <joint class="ankle" name="ankle_L_Joint" axis="0 -1 0" range="-0.791917 1.308990"/>
+                  <geom class="visual" type="box" size="0.100000 0.035000 0.015000" pos="0.010000 0 -0.035000"/>
+                  <geom class="collision" name="foot_L_collision" type="box" size="0.100000 0.035000 0.015000" pos="0.010000 0 -0.035000"/>
+                  <site name="foot_L" pos="0.010000 0 -0.050000" size="0.01"/>
+                </body>
+            </body>
+        </body>
+    </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor class="abad" name="abad_R_motor" joint="abad_R_Joint"/>
+    <motor class="hip" name="hip_R_motor" joint="hip_R_Joint"/>
+    <motor class="knee" name="knee_R_motor" joint="knee_R_Joint"/>
+    <motor class="ankle" name="ankle_R_motor" joint="ankle_R_Joint"/>
+    <motor class="abad" name="abad_L_motor" joint="abad_L_Joint"/>
+    <motor class="hip" name="hip_L_motor" joint="hip_L_Joint"/>
+    <motor class="knee" name="knee_L_motor" joint="knee_L_Joint"/>
+    <motor class="ankle" name="ankle_L_motor" joint="ankle_L_Joint"/>
+  </actuator>
+
+  <sensor>
+    <framequat name="base_quat" objtype="site" objname="imu"/>
+    <framepos name="base_pos" objtype="site" objname="imu"/>
+    <gyro name="base_gyro" site="imu"/>
+    <accelerometer name="base_accel" site="imu"/>
+    <framepos name="foot_R_pos" objtype="site" objname="foot_R"/>
+    <framepos name="foot_L_pos" objtype="site" objname="foot_L"/>
+    <touch name="foot_R_touch" site="foot_R"/>
+    <touch name="foot_L_touch" site="foot_L"/>
+    <subtreecom name="base_subtreecom" body="base_Link"/>
+    <subtreelinvel name="base_subtreelinvel" body="base_Link"/>
+  </sensor>
+
+  <keyframe>
+    <key name="home" qpos="0.000000 0.000000 0.767000 1.000000 0.000000 0.000000 0.000000 0.000000 0.578139 -1.172917 0.594777 0.000000 0.578139 -1.172917 0.594777"/>
+  </keyframe>
+</mujoco>

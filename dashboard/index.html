@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ConvexMPC Dashboard</title>
+  <link rel="stylesheet" href="/static/dashboard.css" />
+  <link rel="stylesheet" href="/static/viewer.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/node_modules/three/build/three.module.js",
+        "three/addons/": "/node_modules/three/examples/jsm/"
+      }
+    }
+  </script>
+  <script>
+    window.__DASHBOARD_CONFIG__ = {
+      chartConfigs: %CHART_CONFIG%,
+      stateLabels: %STATE_LABELS%,
+      defaultWindowSeconds: %DEFAULT_WINDOW_SECONDS%,
+      windowOptions: %WINDOW_OPTIONS%,
+      maxMainPanels: %MAX_MAIN_PANELS%,
+      minMainPanels: %MIN_MAIN_PANELS%,
+    };
+  </script>
+  <script type="module" src="/static/viewer.js"></script>
+  <script defer src="/static/dashboard.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">ConvexMPC real-time telemetry</p>
+        <h1>Live state dashboard</h1>
+        <div class="subtitle" id="hero-subtitle">
+          Auto-scaled plots with stable grid ticks. Click any trace to promote it to the first main chart.
+        </div>
+      </div>
+      <div class="hero-statuses">
+        <div class="status-badge controller waiting" id="controller-status-badge">
+          <span class="dot" id="controller-status-dot"></span>
+          <span id="controller-status-text">controller waiting</span>
+        </div>
+        <div class="status-badge">
+          <span class="dot" id="status-dot"></span>
+          <span id="status-text">memory waiting</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="viewer-row">
+      <div class="viewer-panel">
+        <canvas id="viewer"></canvas>
+        <div id="toolbar" aria-label="Viewer controls">
+          <button id="toggle-visual" class="toggle active" type="button" aria-pressed="true" title="Toggle visual geoms">Visual</button>
+          <button id="toggle-collision" class="toggle" type="button" aria-pressed="false" title="Toggle collision geoms">Collision</button>
+          <div class="camera-mode" aria-label="Camera mode">
+            <button id="camera-free" class="toggle active" type="button" aria-pressed="true" title="Free camera">Free</button>
+            <button id="camera-robot" class="toggle" type="button" aria-pressed="false" title="Follow robot">Robot</button>
+          </div>
+        </div>
+        <div id="viewer-status" aria-live="polite">loading viewer</div>
+      </div>
+      <aside class="command-compass" aria-label="filtered command velocity">
+        <div class="command-compass-head">
+          <div>
+            <div class="command-kicker">Filtered command</div>
+            <h2 class="command-title">Velocity</h2>
+          </div>
+          <div class="command-speed" id="command-speed">-- m/s</div>
+        </div>
+        <canvas id="command-compass-canvas"></canvas>
+        <div class="command-readouts">
+          <div>
+            <span>x_dot</span>
+            <strong id="command-x-dot">--</strong>
+          </div>
+          <div>
+            <span>y_dot</span>
+            <strong id="command-y-dot">--</strong>
+          </div>
+          <div>
+            <span>psi_dot</span>
+            <strong id="command-psi-dot">--</strong>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="segment" id="view-buttons" aria-label="view mode">
+          <button type="button" class="active" data-view="all">All 12</button>
+          <button type="button" data-view="pose">Pose</button>
+          <button type="button" data-view="motion">Motion</button>
+        </div>
+        <div class="segment" id="window-buttons" aria-label="window length">
+          <button type="button" class="active" data-window="5">5s</button>
+          <button type="button" data-window="10">10s</button>
+          <button type="button" data-window="20">20s</button>
+          <button type="button" data-window="30">30s</button>
+        </div>
+        <div class="segment" id="angle-buttons" aria-label="angle units">
+          <button type="button" class="active" data-angle-unit="deg">deg</button>
+          <button type="button" data-angle-unit="rad">rad</button>
+        </div>
+        <div class="segment count-chip" id="main-count-controls" aria-label="main chart count">
+          <button type="button" id="main-count-dec" aria-label="remove main chart">-</button>
+          <div class="count-chip-value" id="main-count-label">1 / 3</div>
+          <button type="button" id="main-count-inc" aria-label="add main chart">+</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="main-stack" id="main-panels"></section>
+
+    <section class="panel grid-panel">
+      <div class="panel-head">
+        <div class="panel-head-left">
+          <div class="panel-kicker">Traces</div>
+          <h2 class="panel-title" id="grid-title">All 12 channels</h2>
+          <div class="panel-sub" id="grid-subtitle">
+            Pose and motion states across a trailing 10 second window.
+          </div>
+        </div>
+        <div class="panel-head-right">
+          <div class="panel-badge" id="history-label">history --</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-grid" id="chart-grid" data-view="all"></div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

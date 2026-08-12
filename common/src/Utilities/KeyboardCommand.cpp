@@ -1,0 +1,463 @@
+#include "Utilities/KeyboardCommand.h"
+
+#include <algorithm>
+#include <cerrno>
+#include <cctype>
+#include <cstring>
+#include <cmath>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <stdexcept>
+
+#include <sys/select.h>
+#include <termios.h>
+#include <unistd.h>
+
+namespace {
+
+termios g_originalTermios{};
+bool g_termiosSaved = false;
+constexpr double kCommandZeroEpsilon = 1e-12;
+constexpr double kStandingOrientationStepRad = 2.0 * 3.141592653589793238462643383279502884 / 180.0;
+constexpr double kRadToDeg = 180.0 / 3.141592653589793238462643383279502884;
+
+double zeroTinyValue(const double value) {
+    return (std::abs(value) < kCommandZeroEpsilon) ? 0.0 : value;
+}
+
+std::string formatScalar(const double value, const int precision) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(precision) << zeroTinyValue(value);
+    return out.str();
+}
+
+std::string formatDegrees(const double radians, const int precision) {
+    return formatScalar(radians * kRadToDeg, precision);
+}
+
+double clampWithOptionalLimit(const double value, const double maxAbs) {
+    if (!std::isfinite(maxAbs)) {
+        return value;
+    }
+    return std::clamp(value, -maxAbs, maxAbs);
+}
+
+void sanitizeCommand(UserCommand& command) {
+    command.x_dot = zeroTinyValue(command.x_dot);
+    command.y_dot = zeroTinyValue(command.y_dot);
+    command.psi_dot = zeroTinyValue(command.psi_dot);
+    command.body_height_offset_m = zeroTinyValue(command.body_height_offset_m);
+    command.standing_roll_offset_rad = zeroTinyValue(command.standing_roll_offset_rad);
+    command.standing_pitch_offset_rad = zeroTinyValue(command.standing_pitch_offset_rad);
+}
+
+void printCommand(const UserCommand& command, const bool standingControls) {
+    if (standingControls) {
+        std::cout << "[KeyboardCommand] standing command | height_offset="
+                  << formatScalar(command.body_height_offset_m, 3) << " m"
+                  << "  pitch=" << formatDegrees(command.standing_pitch_offset_rad, 2)
+                  << " deg"
+                  << "  roll=" << formatDegrees(command.standing_roll_offset_rad, 2)
+                  << " deg"
+                  << "  debug_log_request=" << command.standing_mpc_debug_log_request
+                  << "  mode_toggle_request=" << command.locomotion_mode_toggle_request
+                  << '\n';
+        return;
+    }
+
+    std::cout << "[KeyboardCommand] walking command | x_dot="
+              << formatScalar(command.x_dot, 3) << " m/s"
+              << "  y_dot=" << formatScalar(command.y_dot, 3) << " m/s"
+              << "  psi_dot=" << formatScalar(command.psi_dot, 3) << " rad/s"
+              << "  height_offset=" << formatScalar(command.body_height_offset_m, 3) << " m"
+              << "  pitch=" << formatDegrees(command.standing_pitch_offset_rad, 2)
+              << " deg"
+              << "  roll=" << formatDegrees(command.standing_roll_offset_rad, 2)
+              << " deg"
+              << "  debug_log_request=" << command.standing_mpc_debug_log_request
+              << "  mode_toggle_request=" << command.locomotion_mode_toggle_request
+              << '\n';
+}
+
+void printActiveControls(const bool standingControls) {
+    if (standingControls) {
+        std::cout << "[KeyboardCommand] standing controls active: arrow up/down height, "
+                  << "i/k pitch, j/l roll, t toggle stand/walk, Shift+L log, "
+                  << "space reset\n";
+        return;
+    }
+
+    std::cout << "[KeyboardCommand] walking controls active: w/s x_dot, a/d y_dot, "
+              << "q/e psi_dot, arrow up/down height, i/k pitch, j/l roll, t toggle stand/walk, "
+              << "Shift+L log, space reset\n";
+}
+
+void logLimitReached(const char* axisName,
+                     const bool upperBound,
+                     const double limit,
+                     const bool standingControls,
+                     const char* units) {
+    std::cout << "[KeyboardCommand] " << (standingControls ? "standing" : "walking")
+              << " command " << axisName << (upperBound ? " max reached" : " min reached")
+              << " at " << formatScalar(upperBound ? limit : -limit, 3) << ' ' << units << '\n';
+}
+
+bool applyLimitedDelta(double& value,
+                       const double delta,
+                       const double limit,
+                       const char* axisName,
+                       const char* units,
+                       const bool standingControls) {
+    const double previous = value;
+    const double proposed = previous + delta;
+    value = zeroTinyValue(clampWithOptionalLimit(proposed, limit));
+
+    if (!std::isfinite(limit)) {
+        return false;
+    }
+
+    const bool hitUpper = delta > 0.0 && previous < limit && proposed >= limit;
+    const bool hitLower = delta < 0.0 && previous > -limit && proposed <= -limit;
+    if (hitUpper) {
+        logLimitReached(axisName, true, limit, standingControls, units);
+    } else if (hitLower) {
+        logLimitReached(axisName, false, limit, standingControls, units);
+    }
+
+    return hitUpper || hitLower;
+}
+
+bool configureTerminalRawMode(bool& terminalConfigured) {
+    if (!isatty(STDIN_FILENO)) {
+        std::cerr << "KeyboardCommand requires a TTY on stdin; keyboard input disabled.\n";
+        return false;
+    }
+
+    if (!g_termiosSaved) {
+        if (tcgetattr(STDIN_FILENO, &g_originalTermios) != 0) {
+            throw std::runtime_error(
+                std::string("KeyboardCommand failed to read terminal attributes: ") +
+                std::strerror(errno));
+        }
+        g_termiosSaved = true;
+    }
+
+    termios raw = g_originalTermios;
+    raw.c_lflag &= static_cast<unsigned long>(~(ICANON | ECHO));
+    raw.c_cc[VMIN] = 0;
+    raw.c_cc[VTIME] = 0;
+
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) {
+        throw std::runtime_error(
+            std::string("KeyboardCommand failed to enable raw terminal mode: ") +
+            std::strerror(errno));
+    }
+
+    terminalConfigured = true;
+    return true;
+}
+
+void restoreTerminal(bool& terminalConfigured) {
+    if (!terminalConfigured || !g_termiosSaved) {
+        return;
+    }
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &g_originalTermios);
+    terminalConfigured = false;
+}
+
+}  // namespace
+
+KeyboardCommand::~KeyboardCommand() {
+    stop();
+}
+
+bool KeyboardCommand::start() {
+    if (_running.load()) {
+        return true;
+    }
+
+    if (!configureTerminalRawMode(_terminalConfigured)) {
+        return false;
+    }
+
+    _running.store(true);
+    if (tcflush(STDIN_FILENO, TCIFLUSH) != 0) {
+        std::cerr << "[KeyboardCommand] warning: failed to flush pending keyboard input\n";
+    }
+    std::cout << "[KeyboardCommand] input thread started\n";
+    _inputThread = std::thread(&KeyboardCommand::inputLoop, this);
+    return true;
+}
+
+void KeyboardCommand::stop() {
+    if (!_running.exchange(false)) {
+        restoreTerminal(_terminalConfigured);
+        return;
+    }
+
+    if (_inputThread.joinable()) {
+        _inputThread.join();
+    }
+
+    restoreTerminal(_terminalConfigured);
+    std::cout << '\n';
+}
+
+void KeyboardCommand::setWalkingLimits(const double xDotLimit,
+                                       const double yDotLimit,
+                                       const double psiDotLimit) {
+    std::lock_guard<std::mutex> lock(_commandMutex);
+    _xLimit = xDotLimit;
+    _yLimit = yDotLimit;
+    _yawLimit = psiDotLimit;
+}
+
+UserCommand KeyboardCommand::getUserCommand() const {
+    std::lock_guard<std::mutex> lock(_commandMutex);
+    return _userCommand;
+}
+
+void KeyboardCommand::setStandingControls(const bool standingControls, const bool announce) {
+    const bool previousStandingControls = _standingControls.exchange(standingControls);
+    const bool shouldPrint = announce || previousStandingControls != standingControls;
+    if (!shouldPrint || (!_running.load() && !_terminalConfigured)) {
+        return;
+    }
+
+    printActiveControls(standingControls);
+}
+
+void KeyboardCommand::inputLoop() {
+    EscapeState escapeState = EscapeState::None;
+
+    while (_running.load()) {
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(STDIN_FILENO, &readSet);
+
+        timeval timeout{};
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 100000;
+
+        const int ready = select(STDIN_FILENO + 1, &readSet, nullptr, nullptr, &timeout);
+        if (ready < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+
+        if (ready == 0 || !FD_ISSET(STDIN_FILENO, &readSet)) {
+            continue;
+        }
+
+        char key = 0;
+        const ssize_t bytesRead = read(STDIN_FILENO, &key, 1);
+        if (bytesRead == 1) {
+            switch (escapeState) {
+                case EscapeState::None:
+                    if (key == '\x1b') {
+                        escapeState = EscapeState::SawEscape;
+                        continue;
+                    }
+                    applyKey(key);
+                    break;
+                case EscapeState::SawEscape:
+                    if (key == '[') {
+                        escapeState = EscapeState::SawEscapeBracket;
+                        continue;
+                    }
+                    escapeState = EscapeState::None;
+                    break;
+                case EscapeState::SawEscapeBracket:
+                    if (key == 'A') {
+                        applyHeightKey(true);
+                    } else if (key == 'B') {
+                        applyHeightKey(false);
+                    }
+                    escapeState = EscapeState::None;
+                    break;
+            }
+        }
+    }
+}
+
+void KeyboardCommand::applyHeightKey(bool increase) {
+    const bool standingControls = _standingControls.load();
+    std::lock_guard<std::mutex> lock(_commandMutex);
+
+    const double delta = increase ? _heightStep : -_heightStep;
+    applyLimitedDelta(_userCommand.body_height_offset_m,
+                      delta,
+                      _heightLimit,
+                      "height_offset",
+                      "m",
+                      standingControls);
+    sanitizeCommand(_userCommand);
+    printCommand(_userCommand, standingControls);
+}
+
+void KeyboardCommand::applyStandingOrientationKey(char key) {
+    const bool standingControls = _standingControls.load();
+    std::lock_guard<std::mutex> lock(_commandMutex);
+
+    switch (key) {
+        case 'i':
+            _userCommand.standing_pitch_offset_rad += kStandingOrientationStepRad;
+            break;
+        case 'k':
+            _userCommand.standing_pitch_offset_rad -= kStandingOrientationStepRad;
+            break;
+        case 'j':
+            _userCommand.standing_roll_offset_rad -= kStandingOrientationStepRad;
+            break;
+        case 'l':
+            _userCommand.standing_roll_offset_rad += kStandingOrientationStepRad;
+            break;
+        default:
+            return;
+    }
+
+    sanitizeCommand(_userCommand);
+    printCommand(_userCommand, standingControls);
+}
+
+void KeyboardCommand::applyKey(char key) {
+    if (key == 'L') {
+        std::lock_guard<std::mutex> lock(_commandMutex);
+        ++_userCommand.standing_mpc_debug_log_request;
+        std::cout << "[KeyboardCommand] debug log request #"
+                  << _userCommand.standing_mpc_debug_log_request
+                  << " queued for the next MPC solve\n";
+        return;
+    }
+
+    if (key == 't' || key == 'T') {
+        std::lock_guard<std::mutex> lock(_commandMutex);
+        const unsigned long long debugRequestCount = _userCommand.standing_mpc_debug_log_request;
+        const unsigned long long requestCount = _userCommand.locomotion_mode_toggle_request;
+        _userCommand = UserCommand{};
+        _userCommand.standing_mpc_debug_log_request = debugRequestCount;
+        _userCommand.locomotion_mode_toggle_request = requestCount + 1;
+        sanitizeCommand(_userCommand);
+        printCommand(_userCommand, _standingControls.load());
+        std::cout << "[KeyboardCommand] locomotion mode toggle request #"
+                  << _userCommand.locomotion_mode_toggle_request
+                  << " queued; motion command cleared\n";
+        return;
+    }
+
+    const char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+    const bool standingControls = _standingControls.load();
+
+    if (key == ' ') {
+        std::lock_guard<std::mutex> lock(_commandMutex);
+        const unsigned long long requestCount = _userCommand.standing_mpc_debug_log_request;
+        const unsigned long long toggleRequestCount =
+            _userCommand.locomotion_mode_toggle_request;
+        _userCommand = UserCommand{};
+        _userCommand.standing_mpc_debug_log_request = requestCount;
+        _userCommand.locomotion_mode_toggle_request = toggleRequestCount;
+        sanitizeCommand(_userCommand);
+        printCommand(_userCommand, standingControls);
+        return;
+    }
+
+    if (standingControls) {
+        switch (lowerKey) {
+            case 'i':
+            case 'k':
+            case 'j':
+            case 'l':
+                applyStandingOrientationKey(lowerKey);
+                return;
+            case 'w':
+            case 's':
+            case 'a':
+            case 'd':
+            case 'q':
+            case 'e':
+                return;
+            default:
+                return;
+        }
+    }
+
+    switch (lowerKey) {
+        case 'i':
+        case 'k':
+        case 'j':
+        case 'l':
+            applyStandingOrientationKey(lowerKey);
+            return;
+        case 'w':
+        case 's':
+        case 'a':
+        case 'd':
+        case 'q':
+        case 'e':
+            break;
+        default:
+            return;
+    }
+
+    std::lock_guard<std::mutex> lock(_commandMutex);
+
+    switch (lowerKey) {
+        case 'w':
+            applyLimitedDelta(_userCommand.x_dot,
+                              _linearStep,
+                              _xLimit,
+                              "x_dot",
+                              "m/s",
+                              false);
+            break;
+        case 's':
+            applyLimitedDelta(_userCommand.x_dot,
+                              -_linearStep,
+                              _xLimit,
+                              "x_dot",
+                              "m/s",
+                              false);
+            break;
+        case 'a':
+            applyLimitedDelta(_userCommand.y_dot,
+                              _linearStep,
+                              _yLimit,
+                              "y_dot",
+                              "m/s",
+                              false);
+            break;
+        case 'd':
+            applyLimitedDelta(_userCommand.y_dot,
+                              -_linearStep,
+                              _yLimit,
+                              "y_dot",
+                              "m/s",
+                              false);
+            break;
+        case 'q':
+            applyLimitedDelta(_userCommand.psi_dot,
+                              _yawStep,
+                              _yawLimit,
+                              "psi_dot",
+                              "rad/s",
+                              false);
+            break;
+        case 'e':
+            applyLimitedDelta(_userCommand.psi_dot,
+                              -_yawStep,
+                              _yawLimit,
+                              "psi_dot",
+                              "rad/s",
+                              false);
+            break;
+        default:
+            return;
+    }
+
+    sanitizeCommand(_userCommand);
+    printCommand(_userCommand, false);
+}
