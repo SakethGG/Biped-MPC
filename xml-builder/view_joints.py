@@ -8,12 +8,14 @@ viewer's Control tab shows a slider per joint.
 
 The base's freejoint is stripped (so it stays fixed while sliders move the
 legs), which means its spawn height lives in the base body's static `pos=`
-attribute rather than in `qpos`. By default (regardless of what the source
-XML baked in) the base is re-anchored to
-`hip_z_drop + thigh_length + shank_length + spawn_height_offset` -- lengths
-read back from the compiled model's `abad_R_Link`/`knee_R_Link`/`ankle_R_Link`
-body offsets, offset defaulting to `DEFAULT_SPAWN_OFFSET` (override via the
-second CLI argument).
+attribute rather than in `qpos`. For files using the old straight-chain
+topology (`abad_R_Link`/`knee_R_Link`/`ankle_R_Link` bodies present), the
+base is re-anchored to `hip_z_drop + thigh_length + shank_length +
+spawn_height_offset` (offset defaulting to `DEFAULT_SPAWN_OFFSET`, override
+via the second CLI argument). For the current actuator-cluster topology
+(`design_biped.xml`/`new_biped.xml`/`design.xml`), those anchor bodies don't
+exist, so this falls through to the source XML's own authored `base_Link`
+pos -- already correct, since `DesignSpec.body_height` sets it directly.
 
 Direct port of quadruped_xml_builder's view_joints.py -- only the body names
 used to re-derive leg lengths changed (`FR_calf`/`FR_foot` -> `knee_R_Link`/
@@ -86,19 +88,34 @@ model = mujoco.MjModel.from_xml_string(xml)
 data = mujoco.MjData(model)
 
 # Re-anchor the (fixed, since its freejoint was stripped above) base to
-# hip_z_drop + thigh_length + shank_length + offset instead of whatever
-# height the source XML baked in.
+# hip_z_drop + thigh_length + shank_length + offset -- ONLY for the old
+# straight-chain topology (abad_R_Link/knee_R_Link/ankle_R_Link, pure -Z
+# drops at each body). The current actuator-cluster topology
+# (design_biped.xml/new_biped.xml/design.xml) sets base_Link's spawn height
+# directly from DesignSpec.body_height, and its body offsets aren't pure Z
+# drops (the abad/hip/knee cluster has X/Y components too) -- so that sum
+# wouldn't give a meaningful answer here even if the anchor bodies existed.
+# Falls through to the source XML's own authored pos=, which is already
+# correct for this topology.
 offset = float(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_SPAWN_OFFSET
-hip_z_drop = -model.body("abad_R_Link").pos[2]
-thigh_length = -model.body("knee_R_Link").pos[2]
-shank_length = -model.body("ankle_R_Link").pos[2]
-spawn_z = hip_z_drop + thigh_length + shank_length + offset
 base_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "base_Link")
-model.body_pos[base_id, 2] = spawn_z
-print(
-    f"Spawn height: hip_z_drop={hip_z_drop:.4f} + thigh={thigh_length:.4f} "
-    f"+ shank={shank_length:.4f} + offset={offset:.4f} = {spawn_z:.4f} m"
+_leg_anchor_names = ("abad_R_Link", "knee_R_Link", "ankle_R_Link")
+_has_leg_anchors = all(
+    mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name) >= 0
+    for name in _leg_anchor_names
 )
+if base_id >= 0 and _has_leg_anchors:
+    hip_z_drop = -model.body("abad_R_Link").pos[2]
+    thigh_length = -model.body("knee_R_Link").pos[2]
+    shank_length = -model.body("ankle_R_Link").pos[2]
+    spawn_z = hip_z_drop + thigh_length + shank_length + offset
+    model.body_pos[base_id, 2] = spawn_z
+    print(
+        f"Spawn height: hip_z_drop={hip_z_drop:.4f} + thigh={thigh_length:.4f} "
+        f"+ shank={shank_length:.4f} + offset={offset:.4f} = {spawn_z:.4f} m"
+    )
+else:
+    print(f"Using base_Link's authored spawn height: {model.body_pos[base_id, 2]:.4f} m")
 
 # Apply home keyframe if present (gives standing pose)
 kid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "home")

@@ -18,3 +18,5 @@ Info.framework.plist
 MUJOCO_LOG.TXT
 MJDATA.TXT
 MJMODEL.TXT
+
+.venv

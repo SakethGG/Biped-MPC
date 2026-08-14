@@ -129,7 +129,7 @@
           <body name="knee_L_Link" pos="-0.200752 0.0395 -0.286703" quat="0.939692 0 -0.342022 0">
             <inertial pos="-0.160778 0.00788018 -0.0843318" quat="0.391642 0.609187 0.580027 0.37293"
                       mass="1.0" diaginertia="0.043260 0.039749 0.003806"/>
-            <joint class="knee" name="knee_L_Joint" axis="0 -1 0" range="-0.872665 1.36136"/>
+            <joint class="knee" name="knee_L_Joint" axis="0 -1 0" range="-1.21357 1.17267"/>
             <geom class="visual" type="box" size="0.0125 0.016 0.15" pos="0 0 -0.15"/>
             <geom class="collision" type="box" size="0.0125 0.016 0.15" pos="0 0 -0.15"/>
             <geom class="visual" type="cylinder" size="0.03 0.02725" pos="-0.00287351 0 -0.322483"

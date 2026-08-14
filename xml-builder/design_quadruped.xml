@@ -1,0 +1,307 @@
+<mujoco model="test_go1">
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.001" cone="elliptic" impratio="100"/>
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0"
+             width="256" height="1536"/>
+    <texture type="2d" name="groundplane" builtin="checker"
+             rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+             width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true"
+              texrepeat="5 5" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" size="0 0 0.05" material="groundplane"/>
+
+    <!--
+      Go1 trunk: box 0.125x0.04x0.057 half-extents (250x80x114 mm)
+      Spawn at z=0.445; home keyframe brings it to z=0.27 (standing height).
+    -->
+    <body name="trunk" pos="0 0 0.445">
+      <freejoint/>
+      <camera name="tracking" mode="trackcom" pos="0 -1.2 0.6"
+              xyaxes="1 0 0 0 1 1"/>
+      <inertial pos="0 0 0" mass="3.204"
+                diaginertia="0.0441175 0.0387943 0.0103496"/>
+      <!-- geom type="box" size="0.1250 0.040 0.0570" rgba="0.20 0.20 0.25 1"/ -->
+      <geom type="box" size="0.0850 0.0980 0.0570" rgba="0.20 0.20 0.25 1"/>
+      <site name="imu" pos="0 0 0"/>
+
+      <!-- FR abduction actuator (fixed to trunk) -->
+      <!-- Go1 hip pos: x=+0.1881, y=-0.04675 -->
+      <!-- body name="FR_abd_act" pos="0.1881 -0.04675 0" -->
+      <body name="FR_abd_act" pos="0.1050 -0.04675 0">
+        <inertial pos="0 0 0" mass="0.520"
+                  diaginertia="0.000550 0.000344 0.000344"/>
+        <geom type="cylinder" size="0.0460 0.0200"
+              quat="1 0 1 0" rgba="0.85 0.35 0.10 1"/>
+
+        <!-- FR hip-flex actuator housing (abduction joint, axis x) -->
+        <!-- offset = ABD_HALFLEN(0.02) + HIP_RADIUS(0.04) + gap(0.005) = 0.065 -->
+        <!-- <body name="FR_hip_act" pos="0.0650 0 0"> -->
+        <body name="FR_hip_act" pos="0.0831 0 0">
+          <inertial pos="0 0 0" mass="0.520"
+                    diaginertia="0.000344 0.000550 0.000344"/>
+          <joint name="FR_hip_joint" axis="1 0 0"
+                 range="-0.863 0.863" damping="1.0"
+                 armature="0.01" frictionloss="0.2"/>
+          <geom type="cylinder" size="0.0460 0.0200"
+                quat="1 1 0 0" rgba="0.15 0.45 0.85 1"/>
+
+          <!-- FR knee actuator housing (hip-flex joint, axis y) -->
+          <!-- offset = HIP_HALFLEN(0.02) + KNEE_HALFLEN(0.02) + gap(0.01) = 0.05 -->
+          <body name="FR_knee_act" pos="0 -0.0500 0">
+            <inertial pos="0 0 0" mass="0.520"
+                      diaginertia="0.000344 0.000550 0.000344"/>
+            <joint name="FR_thigh_joint" axis="0 1 0"
+                   range="-0.686 4.501" damping="2.0"
+                   armature="0.01" frictionloss="0.2"/>
+            <geom type="cylinder" size="0.0460 0.0200"
+                  quat="1 1 0 0" rgba="0.15 0.75 0.30 1"/>
+
+            <!-- FR thigh link (fixed to knee actuator) -->
+            <!-- y-offset = 0.03 so total lateral = 0.04675+0.05+0.03 = 0.12675 (= Go1) -->
+            <body name="FR_thigh" pos="0 -0.03 0">
+              <inertial pos="0 0 -0.099" mass="0.500"
+                        diaginertia="0.002014 0.002014 0.0000552"/>
+              <geom type="capsule"
+                    fromto="0 0 0  0 0 -0.1980"
+                    size="0.0150" rgba="0.6 0.6 0.6 1"/>
+
+              <!-- FR calf link (knee joint, axis y) -->
+              <body name="FR_calf" pos="0 0 -0.2130">
+                <inertial pos="0 0 -0.1115" mass="0.195862"
+                          diaginertia="0.000771 0.000771 0.00000967"/>
+                <joint name="FR_calf_joint" axis="0 1 0"
+                       range="-2.818 -0.888" damping="2.0"
+                       armature="0.01" frictionloss="0.2"/>
+                <geom type="capsule"
+                      fromto="0 0 -0.0100  0 0 -0.2130"
+                      size="0.0100" rgba="0.45 0.45 0.45 1"/>
+
+                <!-- FR foot sphere -->
+                <body name="FR_foot" pos="0 0 -0.2130">
+                  <inertial pos="0 0 0" mass="0.02"
+                            diaginertia="0.00000423 0.00000423 0.00000423"/>
+                  <geom name="FR" type="sphere" size="0.0230"
+                        rgba="0.05 0.05 0.05 1"
+                        friction="0.8 0.02 0.01"
+                        solimp="0.015 1 0.023" condim="6" priority="1"/>
+                  <site name="FR" pos="0 0 0" type="sphere" size="0.023" group="5"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- FL abduction actuator (fixed to trunk) -->
+      <!-- body name="FL_abd_act" pos="0.1881 0.04675 0" -->
+      <body name="FL_abd_act" pos="0.105 0.04675 0">
+        <inertial pos="0 0 0" mass="0.520"
+                  diaginertia="0.000550 0.000344 0.000344"/>
+        <geom type="cylinder" size="0.0460 0.0200"
+              quat="1 0 1 0" rgba="0.85 0.35 0.10 1"/>
+
+        <!-- <body name="FL_hip_act" pos="0.0650 0 0"> -->
+        <body name="FL_hip_act" pos="0.0831 0 0">
+          <inertial pos="0 0 0" mass="0.520"
+                    diaginertia="0.000344 0.000550 0.000344"/>
+          <joint name="FL_hip_joint" axis="1 0 0"
+                 range="-0.863 0.863" damping="1.0"
+                 armature="0.01" frictionloss="0.2"/>
+          <geom type="cylinder" size="0.0460 0.0200"
+                quat="1 1 0 0" rgba="0.15 0.45 0.85 1"/>
+
+          <body name="FL_knee_act" pos="0 0.0500 0">
+            <inertial pos="0 0 0" mass="0.520"
+                      diaginertia="0.000344 0.000550 0.000344"/>
+            <joint name="FL_thigh_joint" axis="0 1 0"
+                   range="-0.686 4.501" damping="2.0"
+                   armature="0.01" frictionloss="0.2"/>
+            <geom type="cylinder" size="0.0460 0.0200"
+                  quat="1 1 0 0" rgba="0.15 0.75 0.30 1"/>
+
+            <body name="FL_thigh" pos="0 0.030 0">
+              <inertial pos="0 0 -0.099" mass="0.500"
+                        diaginertia="0.002014 0.002014 0.0000552"/>
+              <geom type="capsule"
+                    fromto="0 0 0  0 0 -0.1980"
+                    size="0.0150" rgba="0.6 0.6 0.6 1"/>
+
+              <body name="FL_calf" pos="0 0 -0.2130">
+                <inertial pos="0 0 -0.1115" mass="0.195862"
+                          diaginertia="0.000771 0.000771 0.00000967"/>
+                <joint name="FL_calf_joint" axis="0 1 0"
+                       range="-2.818 -0.888" damping="2.0"
+                       armature="0.01" frictionloss="0.2"/>
+                <geom type="capsule"
+                      fromto="0 0 -0.0100  0 0 -0.2130"
+                      size="0.0100" rgba="0.45 0.45 0.45 1"/>
+
+                <body name="FL_foot" pos="0 0 -0.2130">
+                  <inertial pos="0 0 0" mass="0.02"
+                            diaginertia="0.00000423 0.00000423 0.00000423"/>
+                  <geom name="FL" type="sphere" size="0.0230"
+                        rgba="0.05 0.05 0.05 1"
+                        friction="0.8 0.02 0.01"
+                        solimp="0.015 1 0.023" condim="6" priority="1"/>
+                  <site name="FL" pos="0 0 0" type="sphere" size="0.023" group="5"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- RR abduction actuator (fixed to trunk) -->
+      <!-- body name="RR_abd_act" pos="-0.1881 -0.04675 0" -->
+      <body name="RR_abd_act" pos="-0.105 -0.04675 0">
+        <inertial pos="0 0 0" mass="0.520"
+                  diaginertia="0.000550 0.000344 0.000344"/>
+        <geom type="cylinder" size="0.0460 0.0200"
+              quat="1 0 1 0" rgba="0.85 0.35 0.10 1"/>
+
+        <!-- <body name="RR_hip_act" pos="-0.0650 0 0"> -->
+        <body name="RR_hip_act" pos="-0.0831 0 0">
+          <inertial pos="0 0 0" mass="0.520"
+                    diaginertia="0.000344 0.000550 0.000344"/>
+          <joint name="RR_hip_joint" axis="1 0 0"
+                 range="-0.863 0.863" damping="1.0"
+                 armature="0.01" frictionloss="0.2"/>
+          <geom type="cylinder" size="0.0460 0.0200"
+                quat="1 1 0 0" rgba="0.15 0.45 0.85 1"/>
+
+          <body name="RR_knee_act" pos="0 -0.0500 0">
+            <inertial pos="0 0 0" mass="0.520"
+                      diaginertia="0.000344 0.000550 0.000344"/>
+            <joint name="RR_thigh_joint" axis="0 1 0"
+                   range="-0.686 4.501" damping="2.0"
+                   armature="0.01" frictionloss="0.2"/>
+            <geom type="cylinder" size="0.0460 0.0200"
+                  quat="1 1 0 0" rgba="0.15 0.75 0.30 1"/>
+
+            <body name="RR_thigh" pos="0 -0.030 0">
+              <inertial pos="0 0 -0.099" mass="0.500"
+                        diaginertia="0.002014 0.002014 0.0000552"/>
+              <geom type="capsule"
+                    fromto="0 0 0  0 0 -0.1980"
+                    size="0.0150" rgba="0.6 0.6 0.6 1"/>
+
+              <body name="RR_calf" pos="0 0 -0.2130">
+                <inertial pos="0 0 -0.1115" mass="0.195862"
+                          diaginertia="0.000771 0.000771 0.00000967"/>
+                <joint name="RR_calf_joint" axis="0 1 0"
+                       range="-2.818 -0.888" damping="2.0"
+                       armature="0.01" frictionloss="0.2"/>
+                <geom type="capsule"
+                      fromto="0 0 -0.0100  0 0 -0.2130"
+                      size="0.0100" rgba="0.45 0.45 0.45 1"/>
+
+                <body name="RR_foot" pos="0 0 -0.2130">
+                  <inertial pos="0 0 0" mass="0.02"
+                            diaginertia="0.00000423 0.00000423 0.00000423"/>
+                  <geom name="RR" type="sphere" size="0.0230"
+                        rgba="0.05 0.05 0.05 1"
+                        friction="0.8 0.02 0.01"
+                        solimp="0.015 1 0.023" condim="6" priority="1"/>
+                  <site name="RR" pos="0 0 0" type="sphere" size="0.023" group="5"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- RL abduction actuator (fixed to trunk) -->
+      <!-- body name="RL_abd_act" pos="-0.1881 0.04675 0" -->
+      <body name="RL_abd_act" pos="-0.105 0.04675 0">
+        <inertial pos="0 0 0" mass="0.520"
+                  diaginertia="0.000550 0.000344 0.000344"/>
+        <geom type="cylinder" size="0.0460 0.0200"
+              quat="1 0 1 0" rgba="0.85 0.35 0.10 1"/>
+
+        <!-- <body name="RL_hip_act" pos="-0.0650 0 0"> -->
+        <body name="RL_hip_act" pos="-0.0831 0 0">
+          <inertial pos="0 0 0" mass="0.520"
+                    diaginertia="0.000344 0.000550 0.000344"/>
+          <joint name="RL_hip_joint" axis="1 0 0"
+                 range="-0.863 0.863" damping="1.0"
+                 armature="0.01" frictionloss="0.2"/>
+          <geom type="cylinder" size="0.0460 0.0200"
+                quat="1 1 0 0" rgba="0.15 0.45 0.85 1"/>
+
+          <body name="RL_knee_act" pos="0 0.0500 0">
+            <inertial pos="0 0 0" mass="0.520"
+                      diaginertia="0.000344 0.000550 0.000344"/>
+            <joint name="RL_thigh_joint" axis="0 1 0"
+                   range="-0.686 4.501" damping="2.0"
+                   armature="0.01" frictionloss="0.2"/>
+            <geom type="cylinder" size="0.0460 0.0200"
+                  quat="1 1 0 0" rgba="0.15 0.75 0.30 1"/>
+
+            <body name="RL_thigh" pos="0 0.030 0">
+              <inertial pos="0 0 -0.099" mass="0.500"
+                        diaginertia="0.002014 0.002014 0.0000552"/>
+              <geom type="capsule"
+                    fromto="0 0 0  0 0 -0.1980"
+                    size="0.0150" rgba="0.6 0.6 0.6 1"/>
+
+              <body name="RL_calf" pos="0 0 -0.2130">
+                <inertial pos="0 0 -0.1115" mass="0.195862"
+                          diaginertia="0.000771 0.000771 0.00000967"/>
+                <joint name="RL_calf_joint" axis="0 1 0"
+                       range="-2.818 -0.888" damping="2.0"
+                       armature="0.01" frictionloss="0.2"/>
+                <geom type="capsule"
+                      fromto="0 0 -0.0100  0 0 -0.2130"
+                      size="0.0100" rgba="0.45 0.45 0.45 1"/>
+
+                <body name="RL_foot" pos="0 0 -0.2130">
+                  <inertial pos="0 0 0" mass="0.02"
+                            diaginertia="0.00000423 0.00000423 0.00000423"/>
+                  <geom name="RL" type="sphere" size="0.0230"
+                        rgba="0.05 0.05 0.05 1"
+                        friction="0.8 0.02 0.01"
+                        solimp="0.015 1 0.023" condim="6" priority="1"/>
+                  <site name="RL" pos="0 0 0" type="sphere" size="0.023" group="5"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="FR_hip"   joint="FR_hip_joint"   kp="100" forcerange="-23.7 23.7"/>
+    <position name="FR_thigh"  joint="FR_thigh_joint"  kp="100" forcerange="-23.7 23.7"/>
+    <position name="FR_calf"  joint="FR_calf_joint"  kp="100" forcerange="-35.55 35.55"/>
+    <position name="FL_hip"   joint="FL_hip_joint"   kp="100" forcerange="-23.7 23.7"/>
+    <position name="FL_thigh"  joint="FL_thigh_joint"  kp="100" forcerange="-23.7 23.7"/>
+    <position name="FL_calf"  joint="FL_calf_joint"  kp="100" forcerange="-35.55 35.55"/>
+    <position name="RR_hip"   joint="RR_hip_joint"   kp="100" forcerange="-23.7 23.7"/>
+    <position name="RR_thigh"  joint="RR_thigh_joint"  kp="100" forcerange="-23.7 23.7"/>
+    <position name="RR_calf"  joint="RR_calf_joint"  kp="100" forcerange="-35.55 35.55"/>
+    <position name="RL_hip"   joint="RL_hip_joint"   kp="100" forcerange="-23.7 23.7"/>
+    <position name="RL_thigh"  joint="RL_thigh_joint"  kp="100" forcerange="-23.7 23.7"/>
+    <position name="RL_calf"  joint="RL_calf_joint"  kp="100" forcerange="-35.55 35.55"/>
+  </actuator>
+
+  <keyframe>
+    <key name="home"
+         qpos="0 0 0.27 1 0 0 0  0 0.9 -1.8  0 0.9 -1.8  0 0.9 -1.8  0 0.9 -1.8"
+         ctrl="0 0.9 -1.8  0 0.9 -1.8  0 0.9 -1.8  0 0.9 -1.8"/>
+    <!-- <key name="home"
+         qpos="0 0 0.27 1 0 0 0  0 0 0  0 0 0  0 0 0  0 0 0"
+         ctrl="0 0 0  0 0 0  0 0 0  0 0 0"/> -->
+  </keyframe>
+</mujoco>

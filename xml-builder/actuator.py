@@ -432,10 +432,6 @@ def build_compact_catalog(
     return out
 
 
-# Default catalog used by the rest of the codebase.
-ACTUATOR_CATALOG: List["ActuatorLike"] = build_compact_catalog()
-
-
 # ---------------------------------------------------------------------------
 # Catalog-mode actuator: a flat, pre-built actuator (real legged-robot units).
 # ---------------------------------------------------------------------------
@@ -456,6 +452,14 @@ class CatalogActuator:
     cost: float                 # [$]
     eta_gb: float = 0.85        # overall transmission efficiency
     width:  float = 0.080       # outer diameter / housing width [m]
+    length: float = 0.048       # axial thickness / housing length along its rotation
+                                 # axis [m] -- NOT in the original catalog schema (which
+                                 # only tracked outer diameter). Needed for the x/y/z
+                                 # placement formulas in builder.py, which treat radius
+                                 # and axial half-length as independent. When a JSON
+                                 # entry doesn't specify "length", the loader below
+                                 # defaults it to 0.6 * width (a flat-pancake-BLDC
+                                 # heuristic) -- flagged there, not a measured value.
     # Optional electrical params for a high-fidelity power model.
     Kt:    Optional[float] = None     # motor torque constant [N·m/A]
     R:     Optional[float] = None     # phase resistance [Ω]
@@ -499,12 +503,17 @@ def load_actuator_catalog_json(path: Union[str, Path]) -> List[CatalogActuator]:
     """Load a flat actuator catalog from JSON (see catalogs/actuators.json).
 
     Required per entry: ``name``, ``peak_torque``, ``peak_speed``, ``mass``,
-    ``cost``. Optional: ``eta``, ``Kt``, ``R``, ``ratio``, ``width``, ``notes``.
+    ``cost``. Optional: ``eta``, ``Kt``, ``R``, ``ratio``, ``width``,
+    ``length``, ``notes``. ``length`` (axial housing thickness) defaults to
+    ``0.6 * width`` when a JSON entry doesn't specify it -- an unvalidated
+    flat-pancake-motor heuristic, not measured data; entries that DO give a
+    real ``length`` (e.g. from a datasheet) should always specify it explicitly.
     """
     data = json.loads(Path(path).read_text())
     items = data.get("actuators", data) if isinstance(data, dict) else data
     out: List[CatalogActuator] = []
     for d in items:
+        width = float(d.get("width", 0.080))
         out.append(CatalogActuator(
             name=str(d["name"]),
             peak_torque=float(d["peak_torque"]),
@@ -512,13 +521,29 @@ def load_actuator_catalog_json(path: Union[str, Path]) -> List[CatalogActuator]:
             mass=float(d["mass"]),
             cost=float(d["cost"]),
             eta_gb=float(d.get("eta", 0.85)),
-            width=float(d.get("width", 0.080)),
+            width=width,
+            length=float(d.get("length", 0.6 * width)),
             Kt=(float(d["Kt"]) if "Kt" in d else None),
             R=(float(d["R"])  if "R"  in d else None),
             ratio=(float(d["ratio"]) if "ratio" in d else None),
             notes=str(d.get("notes", "")),
         ))
     return out
+
+
+# Default catalog used by the rest of the codebase. PER REQUEST: actuator
+# data is retrieved from the JSON catalog files (catalogs/actuators.json),
+# not the COMPAct compact/ artifacts -- those files were never bundled here,
+# so the old default (`build_compact_catalog()`) silently resolved to an
+# EMPTY catalog (GEARBOX_CATALOG == [] with the compact/ folder missing).
+# `set_active_catalog("compact", ...)` is still available if that data
+# shows up later.
+ACTUATOR_CATALOG: List["ActuatorLike"] = load_actuator_catalog_json(DEFAULT_ACTUATORS_JSON)
+
+# Name -> actuator lookup, built alongside the catalog so callers (spec.py)
+# can resolve an actuator by its catalog name instead of a fragile numeric
+# index -- index positions shift any time the JSON file is edited; names don't.
+ACTUATOR_BY_NAME: Dict[str, "ActuatorLike"] = {a.name: a for a in ACTUATOR_CATALOG}
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +572,7 @@ def set_active_catalog(
     ``design.actuator.ACTUATOR_CATALOG`` lazily so this rebinding takes
     effect immediately for subsequent design instantiations.
     """
-    global ACTUATOR_CATALOG, MOTOR_CATALOG, GEARBOX_CATALOG
+    global ACTUATOR_CATALOG, MOTOR_CATALOG, GEARBOX_CATALOG, ACTUATOR_BY_NAME
     if mode == "catalog":
         path = Path(actuators_json) if actuators_json else DEFAULT_ACTUATORS_JSON
         ACTUATOR_CATALOG = load_actuator_catalog_json(path)
@@ -566,4 +591,5 @@ def set_active_catalog(
         raise ValueError(
             f"Unknown actuator mode {mode!r}; expected 'catalog' or 'compact'."
         )
+    ACTUATOR_BY_NAME = {a.name: a for a in ACTUATOR_CATALOG}
     return ACTUATOR_CATALOG
