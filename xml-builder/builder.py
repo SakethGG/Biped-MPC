@@ -33,16 +33,25 @@ Each leg is a genuine actuator cluster, chained:
   level further down, carrying ``ankle_{SIDE}_Joint`` (the actual revolute
   DOF) and the ``foot_{SIDE}`` sensor site.
 
-DesignSpec fields NOT used by this topology: this topology derives every
-actuator-cluster position from trunk dimensions + actuator radii + six
-clearance constants (``clearance_abad_x``/``_y``/``_z``, ``clearance_hip_x``/
-``_y``, ``clearance_knee_y``), not from a free ``hip_x``/``hip_y``/``hip_z_drop`` mount
-offset the way biped.xml's real chain works -- those three fields are gone
-from DesignSpec (see generate.py). ``body_height`` now sets ``base_Link``'s
+This topology derives every actuator-cluster/thigh/ankle/foot position from
+trunk dimensions + actuator radii + every ``clearance_{source}2{target}_{axis}``
+field on ``DesignSpec`` (see its class docstring in generate.py for the
+free/fixed-constant split -- both tiers are read here, the fixed-constant
+ones just default to 0.0 unless overridden), not from a free
+``hip_x``/``hip_y``/``hip_z_drop`` mount offset the way biped.xml's real
+chain works -- those three fields are gone from DesignSpec (see
+generate.py). ``body_height`` now sets ``base_Link``'s
 spawn height directly (no more ``+ hip_z_drop`` composition, and no 2-link
 IK for the home pose -- this topology's leg isn't a simple 2-link chain, so
 home angles are fixed small values instead, matching design_biped.xml's own
 ``0, 0.1, 0.15, -0.1`` convention).
+
+Still NOT spec-controlled: the thigh/shank box cross-sections
+(``ORIG_THIGH_BOX_HALF``/``SHANK_BOX_HALF`` stay fixed constants below, even
+though ``DesignSpec.thigh_thickness``/``shank_width``/``shank_thickness``
+exist as fields -- no placement formula was given for those, only for
+``thigh_width``, which *is* wired in as the knee/thigh gap-fill width) and
+the foot box's own internal shape (``FOOT_X_OFFSET_FRAC``/``FOOT_ANKLE_GAP``).
 """
 from __future__ import annotations
 
@@ -73,13 +82,11 @@ LINK_BOX_LENGTH_FRAC = 0.8
 ORIG_THIGH_BOX_HALF = (0.025, 0.016, 0.125)
 THIGH_DENSITY = 2700.0   # aluminum, kg/m^3 -- auto-derives thigh mass/inertia from geometry
 
-THIGH_WIDTH_GAP = 0.03
-
-# GEOMETRY_RULES.md's "width_thigh" / "constant_thigh_width" -- the same
-# fixed constant used both as the knee-offset formula's gap-fill width and
-# as the thigh_{side}_Link placement offset. Distinct from
-# ORIG_THIGH_BOX_HALF (which sizes the thigh box's own visual/collision
-# geometry) -- this one only affects where things are placed. = 0.030
+# GEOMETRY_RULES.md's "width_thigh" / "constant_thigh_width" is now
+# spec.thigh_width -- the same value used both as the knee-offset formula's
+# gap-fill width and as the thigh_{side}_Link placement offset. Distinct
+# from ORIG_THIGH_BOX_HALF (which sizes the thigh box's own visual/collision
+# geometry, not yet spec-controlled).
 
 # shank: fixed CROSS-SECTION + inertial only, reused verbatim from biped.xml's
 # knee_R_Link/knee_L_Link (mass/inertia not yet spec-controlled -- doesn't
@@ -182,7 +189,7 @@ def _vec3(v) -> str:
 # ---------------------------------------------------------------------------
 def check_geometry(spec, act_abad, act_hip) -> None:
     r_abad, _ = _housing_dims(act_abad)
-    yyy = spec.trunk_width / 2.0 - r_abad + spec.clearance_abad_y
+    yyy = spec.trunk_width / 2.0 - r_abad + spec.clearance_trunk2abadAct_y
     if yyy <= 0:
         raise ValueError(
             f"abad actuator radius ({r_abad:.4f} m) doesn't fit within half the "
@@ -190,14 +197,14 @@ def check_geometry(spec, act_abad, act_hip) -> None:
             "or pick a smaller act_abduction."
         )
     r_hip, _ = _housing_dims(act_hip)
-    under_sqrt = (yyy + spec.clearance_hip_y) ** 2 - r_hip ** 2
+    under_sqrt = (yyy + spec.clearance_abadAct2hipAct_y) ** 2 - r_hip ** 2
     if under_sqrt < 0:
         raise ValueError(
             f"hip actuator radius ({r_hip:.4f} m) is too large for the abad "
-            f"housing's y-offset ({yyy:.4f} m) + clearance_hip_y "
-            f"({spec.clearance_hip_y:.4f} m) -- the hip-offset formula's sqrt "
+            f"housing's y-offset ({yyy:.4f} m) + clearance_abadAct2hipAct_y "
+            f"({spec.clearance_abadAct2hipAct_y:.4f} m) -- the hip-offset formula's sqrt "
             "term would be negative. Increase trunk_width, reduce act_hip's "
-            "radius, or increase clearance_hip_y."
+            "radius, or increase clearance_abadAct2hipAct_y."
         )
 
 
@@ -211,21 +218,28 @@ def _cluster_layout(side: str, spec, act_abad, act_hip, act_knee) -> Dict[str, n
     r_hip, hl_hip = _housing_dims(act_hip)
     r_knee, hl_knee = _housing_dims(act_knee)
 
-    x_abad = hl_abad + spec.clearance_abad_x
-    yyy = spec.trunk_width / 2.0 - r_abad + spec.clearance_abad_y
-    z_abad = -(spec.trunk_thickness / 2.0 + r_abad + spec.clearance_abad_z)
+    x_abad = hl_abad + spec.clearance_trunk2abadAct_x
+    yyy = spec.trunk_width / 2.0 - r_abad + spec.clearance_trunk2abadAct_y
+    z_abad = -(spec.trunk_thickness / 2.0 + r_abad + spec.clearance_trunk2abadAct_z)
     abad_pos = np.array([x_abad, sign * yyy, z_abad])
 
-    x_hip = -(hl_abad + r_hip + spec.clearance_hip_x)
-    under_sqrt = max((yyy + spec.clearance_hip_y) ** 2 - r_hip ** 2, 0.0)
+    x_hip = -(hl_abad + r_hip + spec.clearance_abadAct2hipAct_x)
+    under_sqrt = max((yyy + spec.clearance_abadAct2hipAct_y) ** 2 - r_hip ** 2, 0.0)
     y_hip = -sign * (math.sqrt(under_sqrt) - 2.0 * hl_hip)   # NOTE: inverted sign vs abad/knee -- established explicitly when this formula was first given (hip's y-offset is "negative for left, positive for right", the opposite of abad/knee's convention)
-    hip_pos_rel = np.array([x_hip, y_hip, 0.0])
+    z_hip = spec.clearance_abadAct2hipAct_z
+    hip_pos_rel = np.array([x_hip, y_hip, z_hip])
 
-    y_knee = sign * (hl_hip + (THIGH_WIDTH_GAP + spec.clearance_knee_y) + hl_knee)
-    knee_pos_rel = np.array([0.0, y_knee, 0.0])
+    x_knee = spec.clearance_hipAct2kneeAct_x
+    y_knee = sign * (hl_hip + (spec.thigh_width + spec.clearance_hipAct2kneeAct_y) + hl_knee)
+    z_knee = spec.clearance_hipAct2kneeAct_z
+    knee_pos_rel = np.array([x_knee, y_knee, z_knee])
 
     # thigh_link sits centered in the gap between the hip and knee housing faces
-    thigh_pos_rel = np.array([0.0, -sign * (hl_knee + THIGH_WIDTH_GAP), 0.0])
+    x_thigh = spec.clearance_kneeAct2thigh_x
+    # y_thigh = -sign * (hl_knee + spec.thigh_width + spec.clearance_kneeAct2thigh_y)
+    y_thigh = -sign * (hl_knee + spec.clearance_kneeAct2thigh_y)
+    z_thigh = spec.clearance_kneeAct2thigh_z
+    thigh_pos_rel = np.array([x_thigh, y_thigh, z_thigh])
 
     return {
         "abad_pos": abad_pos, "hip_pos_rel": hip_pos_rel, "knee_pos_rel": knee_pos_rel,
@@ -255,7 +269,7 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
     # LINK_BOX_LENGTH_FRAC of the tangent-point -> shank-attachment span, so
     # it stops short of the shank joint by design (no visual contact) rather
     # than reaching it exactly.
-    cyl_half_len = THIGH_WIDTH_GAP / 2.0
+    cyl_half_len = spec.thigh_width / 2.0
     thigh_available = spec.thigh_length - L["r_knee"]
     if thigh_available <= 0:
         raise ValueError(
@@ -279,8 +293,15 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
     shank_box_size = _vec(SHANK_BOX_HALF[0], SHANK_BOX_HALF[1], shank_half_len)
     shank_box_pos = f"0.0 0.0 {_fmt(-shank_half_len)}"
 
-    ankle_pos = spec.shank_length * SHANK_DIR
-    ankle_pos_rel = f"{_fmt(ankle_pos[0])} 0.0 {_fmt(ankle_pos[2])}"
+    ankle_pos = spec.shank_length * SHANK_DIR + np.array([
+        spec.clearance_shank2ankleAct_x,
+        spec.clearance_shank2ankleAct_y,
+        spec.clearance_shank2ankleAct_z,
+    ])
+    ankle_pos_rel = _vec3(ankle_pos)
+
+    foot_pos_rel = _vec(spec.clearance_ankleAct2foot_x, spec.clearance_ankleAct2foot_y,
+                         - spec.clearance_ankleAct2foot_z)
 
     r_ankle, hl_ankle = _housing_dims(act_ankle)
     x_off = FOOT_X_OFFSET_FRAC * spec.foot_length
@@ -324,7 +345,7 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
                   {_act_inertial_block(act_ankle.mass, r_ankle, hl_ankle, QUAT_ALIGN_Y)}
                   {_act_geom_block(r_ankle, hl_ankle, QUAT_ALIGN_Y, LINK_COLORS['ankle'])}
 
-                  <body name="foot_{side}_Link" pos="0 0 0">
+                  <body name="foot_{side}_Link" pos="{foot_pos_rel}">
                     <joint class="ankle" name="ankle_{side}_Joint" axis="0 -1 0" range="{_vec(*ANKLE_RANGE)}"/>
                     <geom class="visual" type="box" size="{foot_size}" pos="{_fmt(x_off)} 0.0 {_fmt(z_center)}" rgba="{LINK_COLORS['ankle']}"/>
                     <geom class="collision" name="foot_{side}_collision" type="box" size="{foot_size}" pos="{_fmt(x_off)} 0.0 {_fmt(z_center)}" density="{FOOT_DENSITY}"/>

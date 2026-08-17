@@ -10,28 +10,93 @@ quadruped_xml_builder's `DESIGN_PARAMETERS.md`.
 `design_biped.xml`/`new_biped.xml`), not `models/tron/biped.xml`'s own
 simple joint chain -- see `GEOMETRY_RULES.md`. `hip_x`/`hip_y`/`hip_z_drop`
 (the old chain topology's abad-joint mount offset) have no role in this
-topology and are gone from `DesignSpec`; `clearance_abad_z`/
-`clearance_hip_x`/`clearance_hip_y` replace them -- the three clearance
-constants in the abad/hip actuator-housing placement formulas.
+topology and are gone from `DesignSpec`.
+
+## Naming convention
+
+Every clearance/offset field is named `clearance_{source}2{target}_{axis}`
+-- "clearance from `source` to `target`, along `axis`" -- where `source`/
+`target` are the two bodies the offset sits between (chained down the leg:
+`trunk` -> `abadAct` -> `hipAct` -> `kneeAct` -> `thigh` -> ... -> `foot`).
+E.g. `clearance_trunk2abadAct_z` is the abad housing's z-offset off the
+trunk; `clearance_abadAct2hipAct_x` is the hip housing's x-offset off the
+abad housing.
+
+`DesignSpec`'s fields split into two tiers (see its class docstring in
+`generate.py`):
+
+- **Free fields** -- swept by `DesignBounds`/`vector()`/`from_vector()`, the
+  table below.
+- **Fixed-constant fields** -- a Python default on the `DesignSpec`
+  dataclass, not part of `DesignBounds`/`vector()`/`sample()`. Mostly
+  zero-valued clearances plus a few not-yet-`build_xml`-wired link
+  dimensions (`thigh_width`/`thigh_thickness`/`shank_width`/
+  `shank_thickness`); see the second table below.
+
+## Free fields
 
 | Field | Bounds (`DesignBounds`) | Baseline (`generate.py`) | Free in `build_xml`? |
 |---|---|---|---|
 | `trunk_length` | (0.20, 0.40) m | 0.27 m | Yes |
-| `trunk_width` | (0.18, 0.34) m | 0.26 m | Yes, but must clear `2 * abad_actuator_radius` (Rule 1) |
+| `trunk_width` | (0.18, 0.34) m | 0.26 m | Yes, but must clear `2 * abad_actuator_radius` |
 | `trunk_thickness` | (0.12, 0.26) m | 0.19 m | Yes |
-| `clearance_abad_z` | (0.02, 0.08) m | 0.050 m | Yes |
-| `clearance_hip_x` | (0.005, 0.04) m | 0.020 m | Yes |
-| `clearance_hip_y` | (0.005, 0.03) m | 0.010 m | Yes, but must satisfy Rule 2's sqrt-term guard |
-| `thigh_length` | (0.22, 0.45) m | 0.3522218416 m | Yes -- scales along a fixed bend direction, doesn't change it |
-| `shank_length` | (0.22, 0.45) m | 0.3435109359 m | Yes -- same |
+| `clearance_trunk2abadAct_z` | (0.02, 0.08) m | 0.050 m | Yes |
+| `clearance_abadAct2hipAct_x` | (0.005, 0.04) m | 0.020 m | Yes |
+| `clearance_abadAct2hipAct_y` | (0.005, 0.03) m | 0.010 m | Yes, but must satisfy the hip-offset formula's sqrt-term guard |
+| `clearance_hipAct2kneeAct_y` | (0.0, 0.03) m | 0.01 m | Yes |
+| `thigh_length` | (0.18, 0.45) m | 0.2 m | Yes -- scales along a fixed bend direction, doesn't change it |
+| `shank_length` | (0.22, 0.45) m | 0.3 m | Yes -- same |
 | `foot_length` | (0.14, 0.26) m | 0.2 m | Yes |
 | `foot_width` | (0.05, 0.10) m | 0.07 m | Yes |
 | `foot_height` | (0.015, 0.05) m | 0.03 m | Yes |
 | `body_height` | (0.30, 0.85) m | 0.767 m | Yes -- sets `base_Link`'s spawn Z directly, no reachability check |
-| `act_abduction` | catalog index or name | `"MotorU12_framed+WPG:N=10.50"` | Yes |
-| `act_hip` | catalog index or name | `"MotorU12_framed+WPG:N=10.50"` | Yes |
-| `act_knee` | catalog index or name | `"MotorU12_framed+WPG:N=10.50"` | Yes |
-| `act_ankle` | catalog index or name | `"MotorMN8014_framed+CPG:N=4.00"` | Yes |
+| `act_abduction` | catalog index or name | `3` (`"TMotor-AK80-9"`, 24.00 Nm) | Yes |
+| `act_hip` | catalog index or name | `3` (`"TMotor-AK80-9"`, 24.00 Nm) | Yes |
+| `act_knee` | catalog index or name | `3` (`"TMotor-AK80-9"`, 24.00 Nm) | Yes |
+| `act_ankle` | catalog index or name | `4` (`"TMotor-AK80-6"`, 12.00 Nm) | Yes |
+
+## Fixed-constant fields
+
+Each defaults on the `DesignSpec` dataclass itself -- omit them at
+construction time to get the value below. Not part of `DesignBounds` /
+`vector()` / `sample()`, but (unlike an earlier draft of this doc) every
+clearance field below IS read by `build_xml` -- only `thigh_thickness`/
+`shank_width`/`shank_thickness` remain unwired (no placement formula exists
+for them, only for dimensions that feed an offset).
+
+| Field | Default | Used by `build_xml` today? |
+|---|---|---|
+| `clearance_trunk2abadAct_x` | 0.0 m | Yes -- `x_abad` offset |
+| `clearance_trunk2abadAct_y` | 0.0 m | Yes -- inside `yyy` |
+| `clearance_abadAct2hipAct_z` | 0.0 m | Yes -- `z_hip` offset |
+| `clearance_hipAct2kneeAct_x` | 0.0 m | Yes -- `x_knee` offset |
+| `clearance_hipAct2kneeAct_z` | 0.0 m | Yes -- `z_knee` offset |
+| `thigh_width` | 0.030 m | Yes -- the knee/thigh gap-fill width in both the `y_knee` and `y_thigh` offset formulas (replaces the old fixed `THIGH_WIDTH_GAP` constant) |
+| `thigh_thickness` | 0.015 m | No -- the thigh box's own cross-section is still `ORIG_THIGH_BOX_HALF`, a `builder.py` constant |
+| `clearance_kneeAct2thigh_x` | 0.0 m | Yes -- `x_thigh` offset |
+| `clearance_kneeAct2thigh_y` | 0.0 m | Yes -- added on top of `thigh_width` in the `y_thigh` offset |
+| `clearance_kneeAct2thigh_z` | 0.0 m | Yes -- `z_thigh` offset |
+| `shank_width` | 0.030 m | No -- the shank box's own cross-section is still `SHANK_BOX_HALF`, a `builder.py` constant |
+| `shank_thickness` | 0.015 m | No -- same |
+| `clearance_shank2ankleAct_x` | 0.0 m | Yes -- added to `spec.shank_length * SHANK_DIR` |
+| `clearance_shank2ankleAct_y` | 0.0 m | Yes -- same |
+| `clearance_shank2ankleAct_z` | 0.0 m | Yes -- same |
+| `clearance_ankleAct2foot_x` | 0.0 m | Yes -- `foot_{SIDE}_Link`'s own `pos` relative to `ankle_{SIDE}_act` (the foot box/site's position *inside* `foot_{SIDE}_Link` is still `FOOT_X_OFFSET_FRAC`/`FOOT_ANKLE_GAP`, unrelated `builder.py` constants) |
+| `clearance_ankleAct2foot_y` | 0.0 m | Yes -- same |
+| `clearance_ankleAct2foot_z` | 0.03 m | Yes -- same; must stay positive (foot sits below the ankle actuator) |
+
+**`z_abad` discrepancy**: the source notes for the abad z-offset formula
+say `z_abad = -(trunk_length/2 + r_abad + clearance_trunk2abadAct_z)`, but
+`build_xml` uses `trunk_thickness/2`, not `trunk_length/2` -- kept as-is
+since it matches the trunk box's actual z half-extent (`spec.trunk_thickness
+/ 2`) and reproduces `design_biped.xml`'s real geometry to 6 decimal places;
+`trunk_length/2` looks like a copy/paste slip in the notes rather than an
+intended change. Flag if `trunk_length` was actually meant here.
+
+`clearance_shank2ankleAct_*`/`clearance_ankleAct2foot_*` cover the actuator
+between the shank and the foot -- i.e. **the ankle actuator** (`act_ankle`).
+An earlier draft of these notes called it `footAct`, which collides with the
+foot *link*'s own name; `ankleAct` is used instead throughout `DesignSpec`.
 
 ## Actuator placement offsets (`design_biped.xml`, now also `build_xml`'s topology)
 

@@ -1,0 +1,138 @@
+spec = DesignSpec(
+
+#note use offset as formulas and as logic behind the distances
+#use headings to puty what all as user inputs
+
+        # Trunk dimensions and treated as inputs
+        trunk_length=0.27,          # 2 * 0.135 m
+        trunk_width=0.26,           # 2 * 0.13 m
+        trunk_thickness=0.19,       # 2 * 0.095 m
+
+#these actuators can be any thing from the catalog i have give 3 as example 
+        # ABAD actuator
+        act_abduction=3,   
+        # Hip Actuator
+        act_hip=3,          
+        # Knee Actuator
+        act_knee=3,                  
+
+        #clearances which are constants and treated as user inputs
+        clearance_trunk2abadAct_x=0.0, 
+        clearance_trunk2abadAct_y=0.0, 
+        clearance_trunk2abadAct_z=0.050,     # "clearance 1" -- abad z-offset
+        # abad_{SIDE}_act, relative to base_Link all offsets formulas::
+        x_abad = thickness_abad / 2 + clearance_trunk2abadAct_x                                   # (+ both legs)
+        yyy = trunk_width/2 - radius_abad + clearance_trunk2abadAct_y
+        y_abad = +-yyy                                                 # + left, - right
+        z_abad = -(trunk_length/2 + radius_abad + clearance_trunk2abadAct_z)      # (- both legs)
+
+       #clearances which are constants and treated as user inputs
+        clearance_abadAct2hipAct_x=0.020,      # hip x-offset clearance
+        clearance_abadAct2hipAct_y=0.010,      # hip y-offset clearance (inside the sqrt term)
+        clearance_abadAct2hipAct_z=0.0, 
+        # hip_{SIDE}_act, relative to abad_{SIDE}_act all offsets formulas:
+        x_hip = -(thickness_abad/2 + r_hip + clearance_abadAct2hipAct_x)          # (- both legs)
+        y_hip = -+(sqrt((yyy + clearance_abadAct2hipAct_y)^2 - radius_hip^2) - thickness_hip)
+        z_hip = clearance_abadAct2hipAct_z, 
+
+        
+        #clearances which are constants and treated as user inputs
+        clearance_hipAct2kneeAct_x=0.0, ##constant
+        clearance_hipAct2kneeAct_y=0.01, ##constant 
+        clearance_hipAct2kneeAct_z=0.0,##constant
+        # knee_{SIDE}_act, relative to hip_{SIDE}_act all offsets formulas::
+        x_knee = clearance_hipAct2kneeAct_x
+        y_knee = +-(thickness_hip/2 + (width_thigh + clearance_hipAct2kneeAct_y) + thickness_knee/2)  # + left, - right
+        z_knee = clearance_hipAct2kneeAct_z
+
+
+        # Thigh Link
+        #dimensions of the link abd user inputs
+        thigh_length=0.2,  # |(-0.200752, -0.286703)| in the sagittal (X-Z) plane
+        thigh_width = 0.030. ##constant
+        thigh_thickness = 0.015 ##constant
+        #clearances which are constants and treated as user inputs
+        clearance_kneeAct2thigh_y = 0.0,
+        clearance_kneeAct2thigh_x = 0
+        clearance_kneeAct2thigh_z = 0
+        #knee act to thigh link all offsets formulas:
+        x_thigh = 0 + clearance_kneeAct2thigh_x
+        y_thigh = thickness_knee_act/2 + thigh_width
+        z_thigh = 0 + clearance_kneeAct2thigh_z
+
+
+
+        # Shank Link dimensions and treated as user inputs
+        shank_length=0.3,
+        shank_width=0.3, ##constant
+        shank_thickness=0.3, ##constant
+
+        # Foot Actuator
+        act_ankle=4,       # TMotor-AK80-6, 12.00 Nm (was "MotorMN8014_framed+CPG:N=4.00", not in this catalog)
+        #clearances which are constants and treated as user inputs
+        clearance_shank2footAct_x = 0.0 ##constant
+        clearance_shank2footAct_y = 0.0
+        clearance_shank2footAct_z = 0.0 ##constant
+        #all offsets formulas:
+        x_shank = clearance_shank2footAct_x
+        y_shank = clearance_shank2footAct_y
+        z_shank = clearance_shank2footAct_z
+
+        # Foot link        
+        foot_length=0.2,            # 2 * 0.1 m
+        foot_width=0.07,            # 2 * 0.035 m
+        foot_height=0.03,           # 2 * 0.015 m
+        #clearances which are constants and treated as user inputs
+        clearance_footAct2foot_x = 0.0 ##constant
+        clearance_footAct2foot_y = 0.0 
+        clearance_footAct2foot_z = 0.03 # has to be some positive value ##constant
+        #all offsets formulas:
+        x_shank = clearance_footAct2foot_x
+        y_shank = clearance_footAct2foot_y
+        z_shank = clearance_footAct2foot_z
+
+        # base height from ground treat it as user input
+        body_height=0.767,          # base_Link spawn height, matches biped.xml exactly
+
+    )
+
+
+spec = DesignSpec(
+    trunk_length=0.27,          # 2 * 0.135 m
+    trunk_width=0.26,           # 2 * 0.13 m
+    trunk_thickness=0.19,       # 2 * 0.095 m
+    hip_x=0.03415,
+    hip_y=0.0817,
+    hip_z_drop=0.1875,
+    thigh_length=0.3522218416,  # |(-0.200752, -0.0395, -0.286703)|
+    shank_length=0.3435109359,  # |(-0.017221, 0, -0.343079)|
+    foot_length=0.2,            # 2 * 0.1 m
+    foot_width=0.07,            # 2 * 0.035 m
+    foot_height=0.03,           # 2 * 0.015 m
+    body_height=0.5795,         # 0.767 - 0.1875, so base_z matches biped.xml exactly
+    act_abduction=6,            # MotorU12_framed+WPG:N=10.50, peak_torque=79.82 (biped.xml: 80)
+    act_hip=6,                  # same -- biped.xml uses one torque class for ab/ad + hip + knee
+    act_knee=6,                 # same
+    act_ankle=51,                # MotorMN8014_framed+CPG:N=4.00, peak_torque=19.97 (biped.xml: 20)
+)
+
+trunk_length = input
+trunk_width = input
+trunk_thickness = input
+
+clearance_abad_x = input
+clearance_abad_y = input
+clearance_abad_z = input
+
+constant_thigh_width = constant
+
+
+------------------------------------------------------------------------
+
+
+
+
+
+
+
+
