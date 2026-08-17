@@ -1,0 +1,39 @@
+{
+  "trunk_length": 0.27,
+  "trunk_width": 0.26,
+  "trunk_thickness": 0.19,
+
+  "act_abduction": 3,
+  "clearance_trunk2abadAct_x": 0.0,
+  "clearance_trunk2abadAct_y": 0.0,
+  "clearance_trunk2abadAct_z": 0.050,
+
+  "act_hip": 3,
+  "clearance_abadAct2hipAct_x": 0.020,
+  "clearance_abadAct2hipAct_y": 0.010,
+  "clearance_abadAct2hipAct_z": 0.0,
+
+  "act_knee": 3,
+  "clearance_hipAct2kneeAct_x": 0.0,
+  "clearance_hipAct2kneeAct_y": 0.01,
+  "clearance_hipAct2kneeAct_z": 0.0,
+
+  "thigh_length": 0.2,
+  "clearance_kneeAct2thigh_x": 0.0,
+  "clearance_kneeAct2thigh_y": 0.0,
+  "clearance_kneeAct2thigh_z": 0.0,
+
+  "shank_length": 0.3,
+
+  "act_ankle": 4,
+  "clearance_shank2ankleAct_x": 0.0,
+  "clearance_shank2ankleAct_y": 0.0,
+  "clearance_shank2ankleAct_z": 0.0,
+
+  "foot_length": 0.20,
+  "clearance_ankleAct2foot_x": 0.01,
+  "clearance_ankleAct2foot_y": 0.0,
+  "clearance_ankleAct2foot_z": 0.01,
+
+  "body_height": 1.5
+}

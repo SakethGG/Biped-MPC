@@ -29,9 +29,12 @@ abad housing.
   table below.
 - **Fixed-constant fields** -- a Python default on the `DesignSpec`
   dataclass, not part of `DesignBounds`/`vector()`/`sample()`. Mostly
-  zero-valued clearances plus a few not-yet-`build_xml`-wired link
-  dimensions (`thigh_width`/`thigh_thickness`/`shank_width`/
-  `shank_thickness`); see the second table below.
+  zero-valued clearances; see the second table below.
+- **Not `DesignSpec` fields at all** -- `thigh_width`/`thigh_thickness`/
+  `shank_width`/`shank_thickness`/`foot_width`/`foot_height` used to be spec
+  fields but were removed once nothing needed them to vary independently;
+  they're now fixed `builder.py` constants (`THIGH_BOX_HALF`/
+  `SHANK_BOX_HALF`/`FOOT_BOX_HALF`), see the note after the second table.
 
 ## Free fields
 
@@ -46,9 +49,7 @@ abad housing.
 | `clearance_hipAct2kneeAct_y` | (0.0, 0.03) m | 0.01 m | Yes |
 | `thigh_length` | (0.18, 0.45) m | 0.2 m | Yes -- scales along a fixed bend direction, doesn't change it |
 | `shank_length` | (0.22, 0.45) m | 0.3 m | Yes -- same |
-| `foot_length` | (0.14, 0.26) m | 0.2 m | Yes |
-| `foot_width` | (0.05, 0.10) m | 0.07 m | Yes |
-| `foot_height` | (0.015, 0.05) m | 0.03 m | Yes |
+| `foot_length` | (0.14, 0.26) m | 0.2 m | Yes -- foot box's x-extent only; width/height are NOT a `DesignSpec` field, see `FOOT_BOX_HALF` below |
 | `body_height` | (0.30, 0.85) m | 0.767 m | Yes -- sets `base_Link`'s spawn Z directly, no reachability check |
 | `act_abduction` | catalog index or name | `3` (`"TMotor-AK80-9"`, 24.00 Nm) | Yes |
 | `act_hip` | catalog index or name | `3` (`"TMotor-AK80-9"`, 24.00 Nm) | Yes |
@@ -59,10 +60,7 @@ abad housing.
 
 Each defaults on the `DesignSpec` dataclass itself -- omit them at
 construction time to get the value below. Not part of `DesignBounds` /
-`vector()` / `sample()`, but (unlike an earlier draft of this doc) every
-clearance field below IS read by `build_xml` -- only `thigh_thickness`/
-`shank_width`/`shank_thickness` remain unwired (no placement formula exists
-for them, only for dimensions that feed an offset).
+`vector()` / `sample()`, but every field below IS read by `build_xml`.
 
 | Field | Default | Used by `build_xml` today? |
 |---|---|---|
@@ -71,19 +69,33 @@ for them, only for dimensions that feed an offset).
 | `clearance_abadAct2hipAct_z` | 0.0 m | Yes -- `z_hip` offset |
 | `clearance_hipAct2kneeAct_x` | 0.0 m | Yes -- `x_knee` offset |
 | `clearance_hipAct2kneeAct_z` | 0.0 m | Yes -- `z_knee` offset |
-| `thigh_width` | 0.030 m | Yes -- the knee/thigh gap-fill width in both the `y_knee` and `y_thigh` offset formulas (replaces the old fixed `THIGH_WIDTH_GAP` constant) |
-| `thigh_thickness` | 0.015 m | No -- the thigh box's own cross-section is still `ORIG_THIGH_BOX_HALF`, a `builder.py` constant |
 | `clearance_kneeAct2thigh_x` | 0.0 m | Yes -- `x_thigh` offset |
-| `clearance_kneeAct2thigh_y` | 0.0 m | Yes -- added on top of `thigh_width` in the `y_thigh` offset |
+| `clearance_kneeAct2thigh_y` | 0.0 m | Yes -- added on top of `THIGH_BOX_HALF[1]` in the `y_thigh` offset |
 | `clearance_kneeAct2thigh_z` | 0.0 m | Yes -- `z_thigh` offset |
-| `shank_width` | 0.030 m | No -- the shank box's own cross-section is still `SHANK_BOX_HALF`, a `builder.py` constant |
-| `shank_thickness` | 0.015 m | No -- same |
 | `clearance_shank2ankleAct_x` | 0.0 m | Yes -- added to `spec.shank_length * SHANK_DIR` |
 | `clearance_shank2ankleAct_y` | 0.0 m | Yes -- same |
 | `clearance_shank2ankleAct_z` | 0.0 m | Yes -- same |
 | `clearance_ankleAct2foot_x` | 0.0 m | Yes -- `foot_{SIDE}_Link`'s own `pos` relative to `ankle_{SIDE}_act` (the foot box/site's position *inside* `foot_{SIDE}_Link` is still `FOOT_X_OFFSET_FRAC`/`FOOT_ANKLE_GAP`, unrelated `builder.py` constants) |
 | `clearance_ankleAct2foot_y` | 0.0 m | Yes -- same |
 | `clearance_ankleAct2foot_z` | 0.03 m | Yes -- same; must stay positive (foot sits below the ankle actuator) |
+
+`foot_width`/`foot_height`/`thigh_width`/`thigh_thickness`/`shank_width`/
+`shank_thickness` are NOT `DesignSpec` fields at all (not even
+fixed-constant ones) -- the foot box's y/z cross-section is `builder.py`'s
+`FOOT_BOX_HALF = (0.035, 0.015)` (half-width, half-height), the shank box's
+is `SHANK_BOX_HALF = (0.0125, 0.016)`, and
+and `THIGH_BOX_HALF[1]` (0.016 m -- the thigh box's local-Y half-extent,
+which stays aligned with global Y since `THIGH_BOX_QUAT` only rotates about
+Y) replaces the old decoupled `spec.thigh_width`/`THIGH_WIDTH_GAP` gap-fill
+width in both the `y_knee` and `y_thigh` offset formulas (`THIGH_BOX_HALF[0]`,
+the box's local-X half-extent, lies within the sagittal plane and plays no
+role in these Y-axis formulas) -- but since it's a HALF-extent, `y_knee`
+uses `2*THIGH_BOX_HALF[1]` (the box's FULL Y-extent, matching what the old
+full-width `thigh_width` field meant) while `y_thigh` and the thigh's own
+tangent-cylinder half-length use `THIGH_BOX_HALF[1]` directly. Only
+`foot_length` (the foot box's x-extent) stays spec-controlled; the thigh
+box's own length is computed per-spec, not from
+a `THIGH_BOX_HALF` entry.
 
 **`z_abad` discrepancy**: the source notes for the abad z-offset formula
 say `z_abad = -(trunk_length/2 + r_abad + clearance_trunk2abadAct_z)`, but

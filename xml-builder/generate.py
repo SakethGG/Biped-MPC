@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Tuple, Union
 
 import numpy as np
@@ -103,9 +105,10 @@ class DesignSpec:
     shank_length: float
 
     # --- Foot link (ankle_{SIDE}_act -> foot_{SIDE}_Link) --------------------
+    # foot_width/foot_height are NOT DesignSpec fields -- the foot box's
+    # width/height cross-section is a fixed builder.py constant,
+    # FOOT_BOX_HALF, same treatment as THIGH_BOX_HALF/SHANK_BOX_HALF.
     foot_length: float
-    foot_width: float
-    foot_height: float
 
     body_height: float   # base_Link's spawn Z, directly (no more +hip_z_drop)
 
@@ -122,13 +125,12 @@ class DesignSpec:
     clearance_abadAct2hipAct_z: float = 0.0
     clearance_hipAct2kneeAct_x: float = 0.0
     clearance_hipAct2kneeAct_z: float = 0.0
-    thigh_width: float = 0.030            # gap-fill width; formerly builder.py's THIGH_WIDTH_GAP
-    thigh_thickness: float = 0.015
+    # thigh_width/thigh_thickness/shank_width/shank_thickness removed --
+    # never wired into any placement/sizing formula, fully superseded by
+    # builder.py's THIGH_BOX_HALF/SHANK_BOX_HALF (constant_params.json).
     clearance_kneeAct2thigh_x: float = 0.0
     clearance_kneeAct2thigh_y: float = 0.0
     clearance_kneeAct2thigh_z: float = 0.0
-    shank_width: float = 0.030
-    shank_thickness: float = 0.015
     # NOTE: doc.py's draft called this actuator "footAct" -- it's actually
     # the ANKLE actuator (act_ankle); named clearance_shank2ankleAct_* /
     # clearance_ankleAct2foot_* here to avoid clashing with the foot LINK.
@@ -182,7 +184,7 @@ class DesignSpec:
                 self.clearance_abadAct2hipAct_x, self.clearance_abadAct2hipAct_y,
                 self.clearance_hipAct2kneeAct_y,
                 self.thigh_length, self.shank_length,
-                self.foot_length, self.foot_width, self.foot_height,
+                self.foot_length,
                 self.body_height,
                 self.act_abduction, self.act_hip, self.act_knee, self.act_ankle,
             ],
@@ -204,13 +206,11 @@ class DesignSpec:
             thigh_length=float(v[7]),
             shank_length=float(v[8]),
             foot_length=float(v[9]),
-            foot_width=float(v[10]),
-            foot_height=float(v[11]),
-            body_height=float(v[12]),
-            act_abduction=int(np.clip(round(v[13]), 0, n_act - 1)),
-            act_hip=     int(np.clip(round(v[14]), 0, n_act - 1)),
-            act_knee=    int(np.clip(round(v[15]), 0, n_act - 1)),
-            act_ankle=   int(np.clip(round(v[16]), 0, n_act - 1)),
+            body_height=float(v[10]),
+            act_abduction=int(np.clip(round(v[11]), 0, n_act - 1)),
+            act_hip=     int(np.clip(round(v[12]), 0, n_act - 1)),
+            act_knee=    int(np.clip(round(v[13]), 0, n_act - 1)),
+            act_ankle=   int(np.clip(round(v[14]), 0, n_act - 1)),
         )
 
     @staticmethod
@@ -221,7 +221,7 @@ class DesignSpec:
             "clr_a2hX", "clr_a2hY",
             "clr_h2kY",
             "thigh_L", "shank_L",
-            "foot_L", "foot_W", "foot_H",
+            "foot_L",
             "body_h",
             "act_abd", "act_hip", "act_kne", "act_ank",
         ]
@@ -246,8 +246,6 @@ class DesignBounds:
     thigh_length:    Tuple[float, float] = (0.18, 0.45)
     shank_length:    Tuple[float, float] = (0.22, 0.45)
     foot_length:     Tuple[float, float] = (0.14, 0.26)
-    foot_width:      Tuple[float, float] = (0.05, 0.10)
-    foot_height:     Tuple[float, float] = (0.015, 0.05)
     body_height:     Tuple[float, float] = (0.30, 0.85)
     # Actuator bounds default to the *current* (possibly hot-swapped) catalog.
     # Only meaningful for int-indexed act_* (see vector()/from_vector()).
@@ -267,124 +265,60 @@ class DesignBounds:
             self.clearance_abadAct2hipAct_x, self.clearance_abadAct2hipAct_y,
             self.clearance_hipAct2kneeAct_y,
             self.thigh_length, self.shank_length,
-            self.foot_length, self.foot_width, self.foot_height,
+            self.foot_length,
             self.body_height,
             self.act_abduction, self.act_hip, self.act_knee, self.act_ankle,
         ]
 
     def integrality_mask(self) -> np.ndarray:
         """1 = integer-valued, 0 = continuous. Matches `vector()` order."""
-        return np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1])
+        return np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1])
 
     def sample(self, rng: np.random.Generator) -> DesignSpec:
         lo_hi = self.as_pairs()
         cont = np.array(
-            [rng.uniform(lo, hi) for (lo, hi) in lo_hi[:13]], dtype=float
+            [rng.uniform(lo, hi) for (lo, hi) in lo_hi[:11]], dtype=float
         )
         ints = np.array(
-            [rng.integers(lo, hi + 1) for (lo, hi) in lo_hi[13:]], dtype=float
+            [rng.integers(lo, hi + 1) for (lo, hi) in lo_hi[11:]], dtype=float
         )
         return DesignSpec.from_vector(np.concatenate([cont, ints]))
 
 
 # =============================================================================
-# Example build (formerly the whole of generate.py)
+# Example build -- loads every DesignSpec field from variable_params.json
 # =============================================================================
-# --- edit these --------------------------------------------------------
 # This topology matches design_biped.xml/new_biped.xml (a genuine actuator
 # cluster per leg: abad_act -> hip_act -> knee_act -> thigh_Link ->
 # shank_Link -> ankle_act), NOT models/tron/biped.xml's own simple
 # abad_Link->hip_Link->knee_Link->ankle_Link chain.
 #
-#   - trunk_length/width/thickness = 2x biped.xml's base_Link box <geom size>
-#   - clearance_trunk2abadAct_z/clearance_abadAct2hipAct_x/
-#     clearance_abadAct2hipAct_y/clearance_hipAct2kneeAct_y = the FREE
-#     clearance fields in the abad/hip/knee actuator-housing placement
-#     formulas (50mm/20mm/10mm/10mm, as given in chat) -- everything else
-#     about abad/hip/knee housing position is DERIVED from trunk dims + the
-#     picked actuators' own radii, not a free mount-offset field the way
-#     biped.xml's real hip_x/hip_y/hip_z_drop work.
-#   - every other clearance_*/thigh_width/thigh_thickness/shank_width/
-#     shank_thickness field is a fixed-constant DesignSpec field (see its
-#     class docstring) -- listed explicitly below at its Python default so
-#     every editable number lives in ONE place, not because any of them
-#     need to differ from that default for this baseline build.
-#   - thigh_length/shank_length = biped.xml's real hip->knee / knee->ankle
-#     bone lengths -- this topology scales biped.xml's real bend DIRECTION by
-#     these lengths (the bend angle itself is fixed, matching real hardware
-#     CAD, not re-derived from these two numbers).
-#   - foot_length/width/height = 2x biped.xml's foot <geom size>
-#   - body_height = base_Link's spawn Z directly (no hip_z_drop composition
-#     in this topology) -- 0.767 here matches biped.xml's real spawn height.
+# Every DesignSpec field -- both the FREE fields (trunk dims, the four free
+# clearances, thigh/shank/foot lengths, body_height, act_*) and the
+# fixed-constant ones (see DesignSpec's class docstring above) -- lives in
+# variable_params.json as one flat JSON object, edited THERE rather than in
+# this file. (builder.py's own module-level constants -- box cross-sections,
+# bend angles, densities, etc. -- live in the separate constant_params.json,
+# see builder.py's module docstring.)
 #
-# act_abduction/act_hip/act_knee/act_ankle reference ACTUATOR_CATALOG (loaded
-# from catalogs/actuators.json by default, not the catalogs/compact/
-# cross-product -- see actuator.py). Referenced by NAME here rather than a
-# numeric index: indices shift any time actuators.json is edited, names
-# don't. (The two entries below were appended to actuators.json specifically
-# to match biped.xml's real torque limits -- see that file's "notes" fields
-# for what is/isn't measured data.)
+# act_abduction/act_hip/act_knee/act_ankle in variable_params.json are raw
+# catalog INDICES into ACTUATOR_CATALOG (loaded from catalogs/actuators.json
+# by default, not the catalogs/compact/ cross-product -- see actuator.py) --
+# an index shifts meaning any time actuators.json gains or loses an entry, so
+# treat that file as append-only if you're relying on a specific index.
+VARIABLE_PARAMS_PATH = Path(__file__).parent / "variable_params.json"
+
+
+def load_design_spec(path: Path = VARIABLE_PARAMS_PATH) -> DesignSpec:
+    """Build a DesignSpec from a variable_params.json-shaped file -- every
+    DesignSpec field as one flat JSON object (see VARIABLE_PARAMS_PATH)."""
+    with open(path) as f:
+        data = json.load(f)
+    return DesignSpec(**data)
+
+
 if __name__ == "__main__":
-    spec = DesignSpec(
-        # ===== Trunk =========================================================
-        trunk_length=0.27,          # 2 * 0.135 m
-        trunk_width=0.26,           # 2 * 0.13 m
-        trunk_thickness=0.19,       # 2 * 0.095 m
-
-        # ===== ABAD actuator (base_Link -> abad_{SIDE}_act) =================
-        # act_abduction="MotorU12_framed+WPG:N=10.50",  # peak_torque=79.82 (biped.xml: 80)
-        act_abduction=3,   # TMotor-AK80-9, 24.00 Nm (was "MotorU12_framed+WPG:N=10.50")
-        clearance_trunk2abadAct_x=0.0,
-        clearance_trunk2abadAct_y=0.0,
-        clearance_trunk2abadAct_z=0.050,      # "clearance 1" -- abad z-offset
-
-        # ===== Hip actuator (abad_{SIDE}_act -> hip_{SIDE}_act) ==============
-        # act_hip="MotorU12_framed+WPG:N=10.50",        # same -- biped.xml uses one torque class for ab/ad + hip + knee
-        act_hip=3,         # TMotor-AK80-9, 24.00 Nm — much lighter/weaker than the original 79.82 Nm
-        clearance_abadAct2hipAct_x=0.020,     # hip x-offset clearance
-        clearance_abadAct2hipAct_y=0.010,     # hip y-offset clearance (inside the sqrt term)
-        clearance_abadAct2hipAct_z=0.0,
-
-        # ===== Knee actuator (hip_{SIDE}_act -> knee_{SIDE}_act) =============
-        # act_knee="MotorU12_framed+WPG:N=10.50",       # same
-        act_knee=3,        # TMotor-AK80-9, 24.00 Nm
-        clearance_hipAct2kneeAct_x=0.0,
-        clearance_hipAct2kneeAct_y=0.00,      # knee y-offset clearance (on top of the thigh-width gap)
-        clearance_hipAct2kneeAct_z=0.0,
-
-        # ===== Thigh link (knee_{SIDE}_act -> thigh_{SIDE}_Link) =============
-        thigh_length=0.2,  # sagittal (X-Z) plane hip->knee bone length
-        thigh_width=0.030,      # gap-fill width; also the tangent-cylinder's own half-length * 2
-        thigh_thickness=0.015,  # NOT yet wired into the thigh box's cross-section (still ORIG_THIGH_BOX_HALF)
-        clearance_kneeAct2thigh_x=0.0,
-        clearance_kneeAct2thigh_y=0.015,
-        clearance_kneeAct2thigh_z=0.0,
-
-        # ===== Shank link =====================================================
-        shank_length=0.3,  # knee->ankle bone length
-        shank_width=0.030,      # NOT yet wired into the shank box's cross-section (still SHANK_BOX_HALF)
-        shank_thickness=0.015,  # same
-
-        # ===== Ankle actuator (shank_{SIDE}_Link -> ankle_{SIDE}_act) ========
-        # act_ankle="MotorMN8014_framed+CPG:N=4.00",    # peak_torque=19.97 (biped.xml: 20)
-        act_ankle=4,       # TMotor-AK80-6, 12.00 Nm (was "MotorMN8014_framed+CPG:N=4.00", not in this catalog)
-        clearance_shank2ankleAct_x=0.0,
-        clearance_shank2ankleAct_y=0.0,
-        clearance_shank2ankleAct_z=0.0,
-
-        # ===== Foot link (ankle_{SIDE}_act -> foot_{SIDE}_Link) ==============
-        foot_length=0.20,            # 2 * 0.1 m
-        foot_width=0.07,            # 2 * 0.035 m
-        foot_height=0.03,           # 2 * 0.015 m
-        clearance_ankleAct2foot_x=0.0,
-        clearance_ankleAct2foot_y=0.0,
-        clearance_ankleAct2foot_z=0.035,   # must stay positive -- foot sits below the ankle actuator
-
-        # ===== Base ============================================================
-        body_height=0.767,          # base_Link spawn height, matches biped.xml exactly
-    )
-
-    # -------------------------------------------------------------------------
+    spec = load_design_spec()
 
     try:
         spec.actuators()   # resolves all four act_* refs (name or index) up front

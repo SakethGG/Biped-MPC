@@ -16,11 +16,11 @@ Each leg is a genuine actuator cluster, chained:
   layout. ``abad_{SIDE}_act`` is welded to ``base_Link`` (no <joint>);
   ``hip_{SIDE}_act`` carries ``abad_{SIDE}_Joint``; ``knee_{SIDE}_act``
   carries ``hip_{SIDE}_Joint``.
-- ``thigh_{SIDE}_Link`` is welded to ``knee_{SIDE}_act``: a cylinder
-  (radius = knee actuator's radius, length = the full hip/knee-actuator gap)
-  tangent to a cuboid (fixed cross-section, ``ORIG_THIGH_BOX_HALF``) that
-  points along biped.xml's real hip->knee bone direction, scaled to
-  ``spec.thigh_length``.
+- ``thigh_{SIDE}_Link`` is welded to ``knee_{SIDE}_act``: a single cuboid
+  (fixed cross-section, ``THIGH_BOX_HALF``) offset from the body's own
+  origin by the knee actuator's radius (to avoid overlapping
+  ``knee_{SIDE}_act``'s own cylinder geometry), pointing along biped.xml's
+  real hip->knee bone direction, scaled to ``spec.thigh_length``.
 - ``shank_{SIDE}_Link`` carries the belt-driven ``knee_{SIDE}_Joint`` -- even
   though the physical knee motor's housing/mass sits up in
   ``knee_{SIDE}_act``, the joint DOF itself (and its torque/limit numbers)
@@ -46,104 +46,90 @@ IK for the home pose -- this topology's leg isn't a simple 2-link chain, so
 home angles are fixed small values instead, matching design_biped.xml's own
 ``0, 0.1, 0.15, -0.1`` convention).
 
-Still NOT spec-controlled: the thigh/shank box cross-sections
-(``ORIG_THIGH_BOX_HALF``/``SHANK_BOX_HALF`` stay fixed constants below, even
-though ``DesignSpec.thigh_thickness``/``shank_width``/``shank_thickness``
-exist as fields -- no placement formula was given for those, only for
-``thigh_width``, which *is* wired in as the knee/thigh gap-fill width) and
-the foot box's own internal shape (``FOOT_X_OFFSET_FRAC``/``FOOT_ANKLE_GAP``).
+Still NOT spec-controlled: the thigh/shank/foot box cross-sections
+(``THIGH_BOX_HALF``/``SHANK_BOX_HALF``/``FOOT_BOX_HALF`` are all fixed
+constants loaded from ``constant_params.json``, not ``DesignSpec`` fields --
+``thigh_width``/``thigh_thickness``/``shank_width``/``shank_thickness`` and
+``foot_width``/``foot_height`` used to be spec fields feeding these, but
+were removed once nothing else needed them to vary independently).
+
+Every module-level constant this file uses (box cross-sections, bend
+angles, joint ranges, densities, joint dynamics, link colors) is loaded
+from ``constant_params.json`` at import time -- edit that file, not this
+one, to change a constant's value. ``DesignSpec``'s own field values live
+in the separate ``variable_params.json`` -- see ``generate.py``.
 """
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import Dict, Tuple
 
 import numpy as np
 
+CONSTANT_PARAMS_PATH = Path(__file__).parent / "constant_params.json"
+
+
+def _quat_y(deg: float) -> str:
+    """MJCF quat string 'w x y z' for a rotation of `deg` about the Y axis."""
+    theta = math.radians(deg) / 2.0
+    return f"{math.cos(theta):.6f} 0 {math.sin(theta):.6f} 0"
+
+
+def _quat_x(deg: float) -> str:
+    """MJCF quat string 'w x y z' for a rotation of `deg` about the X axis."""
+    theta = math.radians(deg) / 2.0
+    return f"{math.cos(theta):.6f} {math.sin(theta):.6f} 0 0"
+
+
 # ---------------------------------------------------------------------------
-LEG_SIDES = ("R", "L")
-SIDE_SIGN = {"R": -1.0, "L": 1.0}
+# Fixed hardware/CAD constants -- loaded from constant_params.json (see
+# GEOMETRY_RULES.md's "Fixed hardware constants" table for what each one
+# means). Not part of DesignSpec -- see generate.py/variable_params.json for
+# that. To restore the old "shank stays aligned with thigh's frame" no-bend
+# experiment, set constant_params.json's SHANK_BEND_DEG to 0.0.
+with open(CONSTANT_PARAMS_PATH) as _f:
+    _C = json.load(_f)
 
-# Gap kept between the ankle housing and the distal end of the body it sits
-# on (no chat formula was given for ankle placement -- kept as a fixed
-# hardware constant, like the rest of this file's non-spec-controlled bits).
-HOUSING_GAP = 0.005
+LEG_SIDES = tuple(_C["LEG_SIDES"])
+SIDE_SIGN = _C["SIDE_SIGN"]
+LINK_BOX_LENGTH_FRAC = _C["LINK_BOX_LENGTH_FRAC"]
+THIGH_BOX_HALF = tuple(_C["THIGH_BOX_HALF"])   # (local-X half-extent, local-Y half-extent)
+SHANK_BOX_HALF = tuple(_C["SHANK_BOX_HALF"])   # (half-width, half-thickness) -- cross-section only
+FOOT_BOX_HALF = tuple(_C["FOOT_BOX_HALF"])
+THIGH_BEND_DEG = _C["THIGH_BEND_DEG"]
+SHANK_BEND_DEG = _C["SHANK_BEND_DEG"]          # biped.xml's real thigh->shank bend, fixed
+ANKLE_BEND_DEG = _C["ANKLE_BEND_DEG"]
 
-# thigh/shank box LENGTH now stays inside a fraction of the full available
-# span (tangent point -> next joint, or joint -> next joint) rather than
-# reaching it exactly, so consecutive link boxes don't touch/overlap at
-# their shared joint -- e.g. shank_length=10 -> box length=8. Cross-sections
-# stay fixed either way.
-LINK_BOX_LENGTH_FRAC = 0.8
+KNEE_RANGE = tuple(_C["KNEE_RANGE"])    # same both legs, matching biped.xml's real knee_R_Joint range
+ANKLE_RANGE = tuple(_C["ANKLE_RANGE"])  # same both legs, from biped.xml
+ABAD_RANGE = tuple(_C["ABAD_RANGE"])    # same both legs, from biped.xml
+HIP_RANGE = tuple(_C["HIP_RANGE"])      # same both legs, from biped.xml
 
-# thigh box: fixed CROSS-SECTION only (biped.xml's original thigh box) --
-# its length is computed per-spec in _leg_xml (LINK_BOX_LENGTH_FRAC *
-# (thigh_length - r_knee)), not this fixed half-length.
-ORIG_THIGH_BOX_HALF = (0.025, 0.016, 0.125)
-THIGH_DENSITY = 2700.0   # aluminum, kg/m^3 -- auto-derives thigh mass/inertia from geometry
+SHANK_DENSITY = _C["SHANK_DENSITY"]   # aluminum, kg/m^3 -- auto-derives shank mass/inertia from geometry, same as THIGH_DENSITY
+THIGH_DENSITY = _C["THIGH_DENSITY"]   # aluminum, kg/m^3 -- auto-derives thigh mass/inertia from geometry
+FOOT_DENSITY = _C["FOOT_DENSITY"]
 
-# GEOMETRY_RULES.md's "width_thigh" / "constant_thigh_width" is now
-# spec.thigh_width -- the same value used both as the knee-offset formula's
-# gap-fill width and as the thigh_{side}_Link placement offset. Distinct
-# from ORIG_THIGH_BOX_HALF (which sizes the thigh box's own visual/collision
-# geometry, not yet spec-controlled).
-
-# shank: fixed CROSS-SECTION + inertial only, reused verbatim from biped.xml's
-# knee_R_Link/knee_L_Link (mass/inertia not yet spec-controlled -- doesn't
-# rescale with the box's now-variable length, same known limitation as the
-# ankle inertial below). Length is computed per-spec in _leg_xml
-# (LINK_BOX_LENGTH_FRAC * shank_length), not SHANK_BOX_HALF[2] below.
-SHANK_BOX_HALF = (0.0125, 0.016)   # (half-width, half-thickness) -- cross-section only
-SHANK_MASS = 1.0
-SHANK_DIAGINERTIA = (0.043260, 0.039749, 0.003806)
-SHANK_QUAT = "0.939692 0 -0.342022 0"          # biped.xml's real thigh->shank bend, fixed
-KNEE_RANGE = (-1.21357, 1.17267)   # same both legs, matching biped.xml's real knee_R_Joint range
-
-# ankle actuator housing: now its own body (welded to shank_{side}_Link),
-# same treatment as abad/hip/knee -- mass/inertia comes from the catalog via
-# _act_inertial_block(act_ankle.mass, ...), not a fixed constant.
-ANKLE_QUAT = "0.939681 0 0.342052 0"           # biped.xml's real shank->ankle bend, fixed
-ANKLE_RANGE = (-0.791917, 1.30899)             # same both legs, from biped.xml
-FOOT_X_OFFSET_FRAC = 0.05   # foot box center, fwd of the ankle joint, as a fraction of foot_length
-FOOT_ANKLE_GAP = 0.02       # [m] vertical gap from the ankle joint down to the top of the foot box
-FOOT_DENSITY = 1000.0       # [kg/m^3] MuJoCo's own default -- foot_{side}_Link's mass/inertia is
-                            # auto-derived from geom density x volume (no explicit <inertial>),
-                            # same convention as thigh/shank's THIGH_DENSITY.
-
-ABAD_RANGE = (-0.38397, 1.39626)   # same both legs, from biped.xml
-HIP_RANGE = (-1.39626, 1.01229)    # same both legs, from biped.xml
-
-JOINT_DYNAMICS: Dict[str, Dict[str, float]] = {
-    "abad":  {"damping": 1.0, "armature": 0.05, "frictionloss": 0.10},
-    "hip":   {"damping": 1.0, "armature": 0.05, "frictionloss": 0.10},
-    "knee":  {"damping": 1.0, "armature": 0.05, "frictionloss": 0.10},
-    "ankle": {"damping": 0.5, "armature": 0.02, "frictionloss": 0.01},
-}
-
-# biped.xml's real hip->knee and knee->ankle bone directions (unit vectors) --
-# fixed hardware/CAD bend angles; spec.thigh_length/shank_length scale ALONG
-# these, they don't change the direction.
-_THIGH_DIR_RAW_XZ = np.array([-0.200752, -0.286703])   # dropping the small
-# original y-component (-0.0395), same simplification the box's own quat used
-THIGH_DIR_XZ = _THIGH_DIR_RAW_XZ / np.linalg.norm(_THIGH_DIR_RAW_XZ)
-
-_SHANK_DIR_RAW = np.array([0.0 , 0.0, -1])
-SHANK_DIR = _SHANK_DIR_RAW / np.linalg.norm(_SHANK_DIR_RAW)
-
-QUAT_ALIGN_X = "0.707107 0 0.707107 0"   # abad actuator cylinder (axis -> x)
-QUAT_ALIGN_Y = "0.707107 0.707107 0 0"   # hip/knee/ankle actuator cylinder (axis -> y)
+JOINT_DYNAMICS: Dict[str, Dict[str, float]] = _C["JOINT_DYNAMICS"]
 
 # One color per body TYPE (same for both legs), applied to visual geoms only,
 # so every link is visually distinguishable in the viewer. Collision geoms
 # keep the shared translucent debug rgba from the "collision" default class.
-LINK_COLORS: Dict[str, str] = {
-    "abad":  "0.85 0.35 0.10 1",   # orange
-    "hip":   "0.15 0.45 0.85 1",   # blue
-    "knee":  "0.15 0.75 0.30 1",   # green
-    "thigh": "0.55 0.35 0.85 1",   # purple
-    "shank": "0.10 0.65 0.65 1",   # teal
-    "ankle": "0.90 0.75 0.10 1",   # gold
-}
+LINK_COLORS: Dict[str, str] = _C["LINK_COLORS"]
+
+# --- derived from the constants above -- NOT themselves stored in
+# constant_params.json, so they can't drift out of sync with their inputs --
+# biped.xml's real hip->knee and knee->ankle bone directions/bends -- fixed
+# hardware/CAD angles; spec.thigh_length/shank_length scale ALONG the
+# resulting direction, they don't change it.
+SHANK_QUAT = _quat_y(SHANK_BEND_DEG)
+ANKLE_QUAT = _quat_y(ANKLE_BEND_DEG)
+QUAT_ALIGN_X = _quat_y(_C["QUAT_ALIGN_X_DEG"])   # abad actuator cylinder (axis -> x)
+QUAT_ALIGN_Y = _quat_x(_C["QUAT_ALIGN_Y_DEG"])   # hip/knee/ankle actuator cylinder (axis -> y)
+
+_theta_thigh = np.radians(THIGH_BEND_DEG)
+THIGH_DIR_XZ = np.array([np.sin(_theta_thigh), np.cos(_theta_thigh)])
 
 
 def quat_about_y_from_xz_dir(vx: float, vz: float) -> np.ndarray:
@@ -218,28 +204,27 @@ def _cluster_layout(side: str, spec, act_abad, act_hip, act_knee) -> Dict[str, n
     r_hip, hl_hip = _housing_dims(act_hip)
     r_knee, hl_knee = _housing_dims(act_knee)
 
-    x_abad = hl_abad + spec.clearance_trunk2abadAct_x
-    yyy = spec.trunk_width / 2.0 - r_abad + spec.clearance_trunk2abadAct_y
-    z_abad = -(spec.trunk_thickness / 2.0 + r_abad + spec.clearance_trunk2abadAct_z)
-    abad_pos = np.array([x_abad, sign * yyy, z_abad])
+    x_offset_trunk2abadAct = hl_abad + spec.clearance_trunk2abadAct_x
+    y_offset_trunk2abadAct = spec.trunk_width / 2.0 - r_abad + spec.clearance_trunk2abadAct_y
+    z_offset_trunk2abadAct = -(spec.trunk_thickness / 2.0 + r_abad + spec.clearance_trunk2abadAct_z)
+    abad_pos = np.array([x_offset_trunk2abadAct, sign * y_offset_trunk2abadAct, z_offset_trunk2abadAct])
 
-    x_hip = -(hl_abad + r_hip + spec.clearance_abadAct2hipAct_x)
-    under_sqrt = max((yyy + spec.clearance_abadAct2hipAct_y) ** 2 - r_hip ** 2, 0.0)
-    y_hip = -sign * (math.sqrt(under_sqrt) - 2.0 * hl_hip)   # NOTE: inverted sign vs abad/knee -- established explicitly when this formula was first given (hip's y-offset is "negative for left, positive for right", the opposite of abad/knee's convention)
-    z_hip = spec.clearance_abadAct2hipAct_z
-    hip_pos_rel = np.array([x_hip, y_hip, z_hip])
+    x_offset_abadAct2hipAct = -(hl_abad + r_hip + spec.clearance_abadAct2hipAct_x)
+    under_sqrt = max((y_offset_trunk2abadAct + spec.clearance_abadAct2hipAct_y) ** 2 - r_hip ** 2, 0.0)
+    y_offset_abadAct2hipAct = -sign * (math.sqrt(under_sqrt) - 2.0 * hl_hip)   # NOTE: inverted sign vs abad/knee -- established explicitly when this formula was first given (hip's y-offset is "negative for left, positive for right", the opposite of abad/knee's convention)
+    z_offset_abadAct2hipAct = spec.clearance_abadAct2hipAct_z
+    hip_pos_rel = np.array([x_offset_abadAct2hipAct, y_offset_abadAct2hipAct, z_offset_abadAct2hipAct])
 
-    x_knee = spec.clearance_hipAct2kneeAct_x
-    y_knee = sign * (hl_hip + (spec.thigh_width + spec.clearance_hipAct2kneeAct_y) + hl_knee)
-    z_knee = spec.clearance_hipAct2kneeAct_z
-    knee_pos_rel = np.array([x_knee, y_knee, z_knee])
+    x_offset_hipAct2kneeAct = spec.clearance_hipAct2kneeAct_x
+    y_offset_hipAct2kneeAct = sign * (hl_hip + (2.0 * THIGH_BOX_HALF[1] + spec.clearance_hipAct2kneeAct_y) + hl_knee)
+    z_offset_hipAct2kneeAct = spec.clearance_hipAct2kneeAct_z
+    knee_pos_rel = np.array([x_offset_hipAct2kneeAct, y_offset_hipAct2kneeAct, z_offset_hipAct2kneeAct])
 
     # thigh_link sits centered in the gap between the hip and knee housing faces
-    x_thigh = spec.clearance_kneeAct2thigh_x
-    # y_thigh = -sign * (hl_knee + spec.thigh_width + spec.clearance_kneeAct2thigh_y)
-    y_thigh = -sign * (hl_knee + spec.clearance_kneeAct2thigh_y)
-    z_thigh = spec.clearance_kneeAct2thigh_z
-    thigh_pos_rel = np.array([x_thigh, y_thigh, z_thigh])
+    x_offset_kneeAct2thigh = spec.clearance_kneeAct2thigh_x
+    y_offset_kneeAct2thigh = -sign * (hl_knee + THIGH_BOX_HALF[1] + spec.clearance_kneeAct2thigh_y)
+    z_offset_kneeAct2thigh = spec.clearance_kneeAct2thigh_z
+    thigh_pos_rel = np.array([x_offset_kneeAct2thigh, y_offset_kneeAct2thigh, z_offset_kneeAct2thigh])
 
     return {
         "abad_pos": abad_pos, "hip_pos_rel": hip_pos_rel, "knee_pos_rel": knee_pos_rel,
@@ -264,13 +249,13 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
     L = _cluster_layout(side, spec, act_abad, act_hip, act_knee)
     abad_axis = "-1 0 0" if side == "R" else "1 0 0"
 
-    # thigh: cylinder (knee-actuator radius, spans the full hip/knee gap) +
-    # cuboid tangent to it, pointing along THIGH_BOX_DIR. Its LENGTH is
-    # LINK_BOX_LENGTH_FRAC of the tangent-point -> shank-attachment span, so
-    # it stops short of the shank joint by design (no visual contact) rather
-    # than reaching it exactly.
-    cyl_half_len = spec.thigh_width / 2.0
-    thigh_available = spec.thigh_length - L["r_knee"]
+    # thigh: a single cuboid, pointing along THIGH_BOX_DIR, offset from
+    # thigh_Link's own origin by the knee actuator's radius so it doesn't
+    # visually overlap knee_{side}_act's own cylinder geometry. Its LENGTH is
+    # LINK_BOX_LENGTH_FRAC of the knee-radius-offset -> shank-attachment
+    # span, so it stops short of the shank joint by design (no visual
+    # contact) rather than reaching it exactly.
+    thigh_available = spec.thigh_length 
     if thigh_available <= 0:
         raise ValueError(
             f"thigh_length ({spec.thigh_length:.4f} m) is too short to clear "
@@ -278,36 +263,37 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
             "box would have zero or negative length. Increase thigh_length."
         )
     box_half_len = (LINK_BOX_LENGTH_FRAC * thigh_available) / 2.0
-    box_center_local = (L["r_knee"] + box_half_len) * THIGH_BOX_DIR
+    # box_center_local = (L["r_knee"] + box_half_len) * THIGH_BOX_DIR
+    box_center_local = (box_half_len) * THIGH_BOX_DIR
     box_quat = _vec3(THIGH_BOX_QUAT)
-    box_size = _vec(ORIG_THIGH_BOX_HALF[0], ORIG_THIGH_BOX_HALF[1], box_half_len)
+    box_size = _vec(THIGH_BOX_HALF[0], THIGH_BOX_HALF[1], box_half_len)
 
     shank_pos = spec.thigh_length * THIGH_DIR_XZ   # (x, z) in the sagittal plane
     shank_pos_rel = f"{_fmt(shank_pos[0])} 0.0 {_fmt(shank_pos[1])}"
 
     # shank box: same LINK_BOX_LENGTH_FRAC convention -- hangs straight down
-    # from shank_{side}_Link's own origin (its local -z axis is very close to
-    # SHANK_DIR, within ~3 deg, so this stays visually consistent with where
-    # the ankle actually attaches), stopping short of the ankle joint.
+    # (-z) from shank_{side}_Link's own origin, the same axis ankle_pos below
+    # is measured along, stopping short of the ankle joint.
     shank_half_len = (LINK_BOX_LENGTH_FRAC * spec.shank_length) / 2.0
     shank_box_size = _vec(SHANK_BOX_HALF[0], SHANK_BOX_HALF[1], shank_half_len)
     shank_box_pos = f"0.0 0.0 {_fmt(-shank_half_len)}"
 
-    ankle_pos = spec.shank_length * SHANK_DIR + np.array([
+    # ankle_{side}_act sits shank_length straight down (-z) from
+    # shank_{side}_Link's own origin, plus a small clearance offset.
+    ankle_pos = np.array([
         spec.clearance_shank2ankleAct_x,
         spec.clearance_shank2ankleAct_y,
-        spec.clearance_shank2ankleAct_z,
+        -spec.shank_length + spec.clearance_shank2ankleAct_z,
     ])
     ankle_pos_rel = _vec3(ankle_pos)
 
-    foot_pos_rel = _vec(spec.clearance_ankleAct2foot_x, spec.clearance_ankleAct2foot_y,
-                         - spec.clearance_ankleAct2foot_z)
+    foot_pos_rel = _vec(0 ,0, 0)
 
     r_ankle, hl_ankle = _housing_dims(act_ankle)
-    x_off = FOOT_X_OFFSET_FRAC * spec.foot_length
-    z_center = -(FOOT_ANKLE_GAP + spec.foot_height / 2.0)
-    z_bottom = -(FOOT_ANKLE_GAP + spec.foot_height)
-    foot_size = _vec(spec.foot_length / 2.0, spec.foot_width / 2.0, spec.foot_height / 2.0)
+    x_offset_ankleAct2foot = spec.clearance_ankleAct2foot_x
+    z_offset_ankleAct2foot = -(r_ankle + FOOT_BOX_HALF[1] + spec.clearance_ankleAct2foot_z)
+    z_bottom_ankleAct2foot = -(r_ankle + 2.0 * FOOT_BOX_HALF[1] + spec.clearance_ankleAct2foot_z)
+    foot_size = _vec(spec.foot_length / 2.0, FOOT_BOX_HALF[0], FOOT_BOX_HALF[1])
 
     knee_lo, knee_hi = KNEE_RANGE
 
@@ -329,17 +315,13 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
             {_act_geom_block(L['r_knee'], L['hl_knee'], QUAT_ALIGN_Y, LINK_COLORS['knee'])}
 
             <body name="thigh_{side}_Link" pos="{_vec3(L['thigh_pos_rel'])}">
-              <geom class="visual" type="cylinder" size="{_vec(L['r_knee'], cyl_half_len)}" quat="{QUAT_ALIGN_Y}" rgba="{LINK_COLORS['thigh']}"/>
-              <geom class="collision" type="cylinder" size="{_vec(L['r_knee'], cyl_half_len)}" quat="{QUAT_ALIGN_Y}" density="{THIGH_DENSITY}"/>
               <geom class="visual" type="box" size="{box_size}" pos="{_vec3(box_center_local)}" quat="{box_quat}" rgba="{LINK_COLORS['thigh']}"/>
               <geom class="collision" type="box" size="{box_size}" pos="{_vec3(box_center_local)}" quat="{box_quat}" density="{THIGH_DENSITY}"/>
 
               <body name="shank_{side}_Link" pos="{shank_pos_rel}" quat="{SHANK_QUAT}">
                 <joint class="knee" name="knee_{side}_Joint" axis="0 -1 0" range="{_fmt(knee_lo)} {_fmt(knee_hi)}"/>
-                <inertial pos="-0.160778 0.00788018 -0.0843318" quat="0.391642 0.609187 0.580027 0.37293"
-                          mass="{SHANK_MASS}" diaginertia="{_vec(*SHANK_DIAGINERTIA)}"/>
                 <geom class="visual" type="box" size="{shank_box_size}" pos="{shank_box_pos}" rgba="{LINK_COLORS['shank']}"/>
-                <geom class="collision" type="box" size="{shank_box_size}" pos="{shank_box_pos}"/>
+                <geom class="collision" type="box" size="{shank_box_size}" pos="{shank_box_pos}" density="{SHANK_DENSITY}"/>
 
                 <body name="ankle_{side}_act" pos="{ankle_pos_rel}" quat="{ANKLE_QUAT}">
                   {_act_inertial_block(act_ankle.mass, r_ankle, hl_ankle, QUAT_ALIGN_Y)}
@@ -347,9 +329,9 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
 
                   <body name="foot_{side}_Link" pos="{foot_pos_rel}">
                     <joint class="ankle" name="ankle_{side}_Joint" axis="0 -1 0" range="{_vec(*ANKLE_RANGE)}"/>
-                    <geom class="visual" type="box" size="{foot_size}" pos="{_fmt(x_off)} 0.0 {_fmt(z_center)}" rgba="{LINK_COLORS['ankle']}"/>
-                    <geom class="collision" name="foot_{side}_collision" type="box" size="{foot_size}" pos="{_fmt(x_off)} 0.0 {_fmt(z_center)}" density="{FOOT_DENSITY}"/>
-                    <site name="foot_{side}" pos="{_fmt(x_off)} 0.0 {_fmt(z_bottom)}" size="0.01"/>
+                    <geom class="visual" type="box" size="{foot_size}" pos="{_fmt(x_offset_ankleAct2foot)} 0.0 {_fmt(z_offset_ankleAct2foot)}" rgba="{LINK_COLORS['ankle']}"/>
+                    <geom class="collision" name="foot_{side}_collision" type="box" size="{foot_size}" pos="{_fmt(x_offset_ankleAct2foot)} 0.0 {_fmt(z_offset_ankleAct2foot)}" density="{FOOT_DENSITY}"/>
+                    <site name="foot_{side}" pos="{_fmt(x_offset_ankleAct2foot)} 0.0 {_fmt(z_bottom_ankleAct2foot)}" size="0.01"/>
                   </body>
                 </body>
               </body>

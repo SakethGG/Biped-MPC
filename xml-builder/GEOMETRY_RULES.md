@@ -32,8 +32,8 @@ base_Link -> abad_{SIDE}_act -> hip_{SIDE}_act -> knee_{SIDE}_act
 
 Unlike the old chain topology, there's no "home-pose depth must be
 reachable" rule here -- this topology's leg isn't a simple 2-link chain (the
-actuator cluster plus a tangent-cylinder thigh box plus a fixed shank/ankle
-bend don't reduce to a closed-form 2-link IK), so the home keyframe just
+actuator cluster plus a thigh box plus a fixed shank/ankle bend don't
+reduce to a closed-form 2-link IK), so the home keyframe just
 uses fixed small joint angles (`0, 0.1, 0.15, -0.1` per leg, matching
 `design_biped.xml`'s own convention) instead of solving for a target depth.
 `body_height` sets `base_Link`'s spawn Z directly, with no reachability
@@ -44,10 +44,12 @@ check against `thigh_length`/`shank_length`.
 `abad_{SIDE}_act`, `hip_{SIDE}_act`, `knee_{SIDE}_act`, `thigh_{SIDE}_Link`,
 `ankle_{SIDE}_act`, and `foot_{SIDE}_Link` are all chained -- each positioned
 relative to the previous one -- by the clearance-based x/y/z offset formulas
-below. Every `clearance_*`/`thigh_width` symbol is a `DesignSpec` field (see
-its class docstring in `generate.py` for the free/fixed-constant split --
-fixed-constant ones default to 0.0 unless a caller overrides them, but are
-still read here, same as the free ones):
+below. Every `clearance_*` symbol is a `DesignSpec` field (see its class
+docstring in `generate.py` for the free/fixed-constant split -- fixed-constant
+ones default to 0.0 unless a caller overrides them, but are still read here,
+same as the free ones). `thigh_width` below is NOT a `DesignSpec` field --
+it's `builder.py`'s fixed `THIGH_BOX_HALF[1]` constant (see "Thigh, shank,
+ankle" below).
 
 ```
 # abad_{SIDE}_act, relative to base_Link:
@@ -66,12 +68,12 @@ z_hip = clearance_abadAct2hipAct_z
 
 # knee_{SIDE}_act, relative to hip_{SIDE}_act:
 x_knee = clearance_hipAct2kneeAct_x
-y_knee = +-(thickness_hip/2 + (thigh_width + clearance_hipAct2kneeAct_y) + thickness_knee/2)  # + left, - right
+y_knee = +-(thickness_hip/2 + (2*THIGH_BOX_HALF[1] + clearance_hipAct2kneeAct_y) + thickness_knee/2)  # + left, - right -- 2*THIGH_BOX_HALF[1] = thigh box's FULL extent along Y
 z_knee = clearance_hipAct2kneeAct_z
 
 # thigh_{SIDE}_Link, relative to knee_{SIDE}_act:
 x_thigh = clearance_kneeAct2thigh_x
-y_thigh = -+(thickness_knee/2 + thigh_width + clearance_kneeAct2thigh_y)   # sign opposite y_knee's -- the tangent point sits back toward the hip side, not out past the knee
+y_thigh = -+(thickness_knee/2 + THIGH_BOX_HALF[1] + clearance_kneeAct2thigh_y)   # sign opposite y_knee's (tangent point sits back toward the hip side, not out past the knee) -- HALF extent here, not full
 z_thigh = clearance_kneeAct2thigh_z
 
 # ankle_{SIDE}_act, relative to shank_{SIDE}_Link -- layered on top of the
@@ -88,11 +90,19 @@ z_foot = clearance_ankleAct2foot_z
 
 `thickness_X` = the full axial length of actuator X's housing cylinder
 (`2 * X.length/2`, from the resolved `CatalogActuator`/`Actuator`'s `length`
-field). `r_X` = `X.width / 2`. `thigh_width` (0.030 m at baseline) is the
-gap-fill width reused by both the knee-actuator and thigh-placement
-formulas -- it used to be a fixed `THIGH_WIDTH_GAP` `builder.py` constant,
-now a spec-controlled field (also sizes the thigh's own tangent-cylinder
-half-length, see below). All `clearance_*` fields default to 0.0 except
+field). `r_X` = `X.width / 2`. `THIGH_BOX_HALF[1]` (0.016 m) replaces what
+used to be a single decoupled "gap-fill width" value (`builder.py` constant
+`THIGH_WIDTH_GAP` -> spec field `thigh_width` -> now gone). It's index `[1]`,
+not `[0]`, that belongs here: the thigh box's `size=` is
+`_vec(THIGH_BOX_HALF[0], THIGH_BOX_HALF[1], box_half_len)`, i.e. `[0]` is
+the box's local-X half-extent (within the sagittal X-Z plane) and `[1]` is
+its local-Y half-extent -- and since `THIGH_BOX_QUAT` only rotates about Y,
+the box's local-Y axis stays aligned with GLOBAL Y no matter the bend
+angle, the same axis `y_knee`/`y_thigh` are measured along. Since
+`THIGH_BOX_HALF[1]` is a HALF-extent, not a full one, `y_knee` above uses
+`2*THIGH_BOX_HALF[1]` (the box's FULL extent along Y, since that's the
+clear span the box needs) while `y_thigh` uses `THIGH_BOX_HALF[1]` directly
+(already a half-extent). All `clearance_*` fields default to 0.0 except
 `clearance_trunk2abadAct_z`/`clearance_abadAct2hipAct_x`/`_y`/
 `clearance_hipAct2kneeAct_y` (free, 50mm/20mm/10mm/10mm at baseline) and
 `clearance_ankleAct2foot_z` (fixed-constant, 30mm at baseline -- must stay
@@ -108,25 +118,30 @@ copy/paste slip in the notes, not an intended change.
 ## Thigh, shank, ankle
 
 **`thigh_{SIDE}_Link`** (welded to `knee_{SIDE}_act`, no `<joint>`): a
-cylinder (radius = knee actuator's radius, half-length = `spec.thigh_width /
-2`) plus a cuboid (`ORIG_THIGH_BOX_HALF = (0.025, 0.016, 0.125)`, a fixed
-cross-section+length, NOT `spec.thigh_length`/`thigh_thickness` -- see
-below) whose small end face sits tangent to that cylinder's side, pointing
-along `THIGH_BOX_DIR` -- biped.xml's real hip->knee bone direction (X-Z
-plane only, y dropped), a fixed hardware/CAD angle. No explicit
-`<inertial>`: mass/COM/inertia auto-derived by MuJoCo from geom density x
-volume (aluminum, 2700 kg/m^3; visual-class geoms use `density="0"` so they
-don't double-count against the collision geoms).
+single cuboid (`THIGH_BOX_HALF = (0.025, 0.016)`, a fixed cross-section --
+box LENGTH is computed separately per-spec, see below -- NOT
+`spec.thigh_length`/`thigh_thickness`), pointing along `THIGH_BOX_DIR` --
+biped.xml's real hip->knee bone direction (X-Z plane only, y dropped), a
+fixed hardware/CAD angle. Its near face is offset from `thigh_{SIDE}_Link`'s
+own origin by the knee actuator's radius (`L['r_knee']`), so it doesn't
+visually overlap `knee_{SIDE}_act`'s own cylinder geometry -- there used to
+be an actual tangent cylinder filling that gap, since removed in favor of
+just leaving the offset. No explicit `<inertial>`: mass/COM/inertia
+auto-derived by MuJoCo from geom density x volume (aluminum, 2700 kg/m^3;
+visual-class geoms use `density="0"` so they don't double-count against the
+collision geoms).
 
 **`shank_{SIDE}_Link`** (child of `thigh_{SIDE}_Link`): positioned at
 `spec.thigh_length * THIGH_DIR_XZ` (y always 0) -- i.e. `thigh_length` scales
 ALONG the fixed bend direction above; it does not change the angle. Carries
 the belt-driven `knee_{SIDE}_Joint` (axis `0 -1 0`, `KNEE_RANGE` -- same
 range both legs, matching biped.xml's real `knee_R_Joint`). Orientation is the
-fixed `SHANK_QUAT` (biped.xml's real thigh->shank bend). Geometry/inertial
-is a placeholder, reused verbatim from biped.xml's `knee_R_Link`/
-`knee_L_Link` box (`SHANK_BOX_HALF`, `SHANK_MASS`, `SHANK_DIAGINERTIA`) --
-NOT `spec.shank_width`/`shank_thickness`, still not spec-controlled.
+fixed `SHANK_QUAT` (biped.xml's real thigh->shank bend). Geometry is a
+placeholder cross-section (`SHANK_BOX_HALF`, reused verbatim from biped.xml's
+`knee_R_Link`/`knee_L_Link` box -- NOT `spec.shank_width`/`shank_thickness`,
+still not spec-controlled). No explicit `<inertial>`: mass/inertia
+auto-derived by MuJoCo from geom density x volume (`SHANK_DENSITY`, aluminum
+-- same convention as the thigh/foot, not a fixed mass/diaginertia anymore).
 
 **`ankle_{SIDE}_act`** (child of `shank_{SIDE}_Link`, no `<joint>` -- welded,
 same treatment as abad/hip/knee's housings): positioned at
@@ -165,10 +180,11 @@ a known, deliberate trade-off for having a tunable length at all, not a bug.
 
 | Constant | Value | What it is |
 |---|---|---|
-| `ORIG_THIGH_BOX_HALF` | (0.025, 0.016, 0.125) m | Thigh box cross-section + length -- fixed, NOT `spec.thigh_length`/`thigh_thickness` |
+| `THIGH_BOX_HALF` | (0.025, 0.016) m | Thigh box cross-section, `(local-X half-extent, local-Y half-extent)` -- fixed, NOT `spec.thigh_thickness`; box LENGTH is computed per-spec, not stored here. `THIGH_BOX_HALF[1]` (the Y-extent -- stays aligned with global Y since `THIGH_BOX_QUAT` only rotates about Y) also doubles as the knee/thigh gap-fill width in the `y_knee`/`y_thigh` offset formulas (formerly the separate `spec.thigh_width` field); `THIGH_BOX_HALF[0]` only affects the box's extent within the sagittal X-Z plane |
 | `THIGH_DENSITY` | 2700 kg/m^3 | Aluminum, used to auto-derive thigh mass/inertia from geometry |
 | `SHANK_BOX_HALF` | (0.0125, 0.016) m | Placeholder shank cross-section, biped.xml's real box -- NOT `spec.shank_width`/`shank_thickness` |
-| `SHANK_MASS` / `SHANK_DIAGINERTIA` | 1.0 kg / (0.04326, 0.039749, 0.003806) | Placeholder shank inertial, biped.xml's real value |
+| `SHANK_DENSITY` | 2700 kg/m^3 | Aluminum, used to auto-derive shank mass/inertia from geometry (same convention as `THIGH_DENSITY`/`FOOT_DENSITY`) |
+| `FOOT_BOX_HALF` | (0.035, 0.015) m | Foot box cross-section (half-width, half-height) -- fixed, NOT `spec.foot_width`/`foot_height` (removed fields); only `spec.foot_length` (the box's x-extent) stays spec-controlled |
 | `SHANK_QUAT` | `0.939692 0 -0.342022 0` | Fixed thigh->shank bend, biped.xml's real CAD angle |
 | `KNEE_RANGE` | (-1.21357, 1.17267) | Same both legs, matching biped.xml's real `knee_R_Joint` range |
 | `ANKLE_QUAT` | `0.939681 0 0.342052 0` | Fixed shank->ankle bend, biped.xml's real CAD angle |

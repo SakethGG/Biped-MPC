@@ -1,0 +1,42 @@
+{
+  "LEG_SIDES": ["R", "L"],
+  "SIDE_SIGN": {"R": -1.0, "L": 1.0},
+
+  "LINK_BOX_LENGTH_FRAC": 0.8,
+
+  "THIGH_BOX_HALF": [0.025, 0.016],
+  "SHANK_BOX_HALF": [0.0125, 0.016],
+  "FOOT_BOX_HALF": [0.035, 0.015],
+
+  "THIGH_BEND_DEG": -145.0,
+  "SHANK_BEND_DEG": -40.0,
+  "ANKLE_BEND_DEG": 40.0,
+
+  "QUAT_ALIGN_X_DEG": 90.0,
+  "QUAT_ALIGN_Y_DEG": 90.0,
+
+  "KNEE_RANGE": [-1.21357, 1.17267],
+  "ANKLE_RANGE": [-0.791917, 1.30899],
+  "ABAD_RANGE": [-0.38397, 1.39626],
+  "HIP_RANGE": [-1.39626, 1.01229],
+
+  "SHANK_DENSITY": 2700.0,
+  "THIGH_DENSITY": 2700.0,
+  "FOOT_DENSITY": 1000.0,
+
+  "JOINT_DYNAMICS": {
+    "abad":  {"damping": 1.0, "armature": 0.05, "frictionloss": 0.10},
+    "hip":   {"damping": 1.0, "armature": 0.05, "frictionloss": 0.10},
+    "knee":  {"damping": 1.0, "armature": 0.05, "frictionloss": 0.10},
+    "ankle": {"damping": 0.5, "armature": 0.02, "frictionloss": 0.01}
+  },
+
+  "LINK_COLORS": {
+    "abad":  "0.85 0.35 0.10 1",
+    "hip":   "0.15 0.45 0.85 1",
+    "knee":  "0.15 0.75 0.30 1",
+    "thigh": "0.55 0.35 0.85 1",
+    "shank": "0.10 0.65 0.65 1",
+    "ankle": "0.90 0.75 0.10 1"
+  }
+}
