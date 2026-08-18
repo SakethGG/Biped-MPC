@@ -129,10 +129,25 @@ constant_thigh_width = constant
 
 ------------------------------------------------------------------------
 
+now lets make shanges to the trunk mass model:
+
+currently the trunk mass is volume i.e l&b&h of the box times the density:
+
+but in reality it is not going to be a solid piece of block insted it is going to be a shell which incloses a battery and other electronics:
+
+so for finding the mass of the trunk lets take the totlal surafce area i.e 2(lb+bh+hl) times thickness ad nit hass some thickness + some constant mass which is going to be given bu the user in the constants json file as an input
+
+so make th enecessary chnages in the builder file to generate an accurate xml.
 
 
 
 
+for moment of inertia of the trunk currently it is taking for the whole cuboid i want it to take this insted:
 
+sum of these two quantities: 1. moment of inertia of hollow cuboid shell which is derived using this formula:
 
+For a thick-walled hollow cuboid shell with outer dimensions \(a \times b \times c\) and uniform wall thickness \(t\), the mass moment of inertia about the central principal axes is found by subtracting the moment of inertia of the inner empty cavity from that of the outer solid cuboid.General Formulas for Central AxesAssuming the origin is at the center of mass with axes aligned along the dimensions \(a\) (x-axis), \(b\) (y-axis), and \(c\) (z-axis):About the X-axis (\(I_{x}\)):\(I_{x}=\frac{1}{12}M(b^{2}+c^{2})-\frac{1}{12}m\left((b-2t)^{2}+(c-2t)^{2}\right)\)About the Y-axis (\(I_{y}\)):\(I_{y}=\frac{1}{12}M(a^{2}+c^{2})-\frac{1}{12}m\left((a-2t)^{2}+(c-2t)^{2}\right)\)About the Z-axis (\(I_{z}\)):\(I_{z}=\frac{1}{12}M(a^{2}+b^{2})-\frac{1}{12}m\left((a-2t)^{2}+(b-2t)^{2}\right)\)(Where \(M\) is the total mass of the hollow shell, and \(m = M \times \frac{(a-2t)(b-2t)(c-2t)}{abc}\) is the mass that would occupy the inner hollow core
 
+and 2. moment of inertia of a cuboid basically a battery pacy which has a mass of "TRUNK_EXTRA_MASS" 
+
+this shum should be passed to the xml file

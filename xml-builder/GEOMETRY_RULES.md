@@ -127,9 +127,11 @@ own origin by the knee actuator's radius (`L['r_knee']`), so it doesn't
 visually overlap `knee_{SIDE}_act`'s own cylinder geometry -- there used to
 be an actual tangent cylinder filling that gap, since removed in favor of
 just leaving the offset. No explicit `<inertial>`: mass/COM/inertia
-auto-derived by MuJoCo from geom density x volume (aluminum, 2700 kg/m^3;
-visual-class geoms use `density="0"` so they don't double-count against the
-collision geoms).
+auto-derived by MuJoCo from geom density x volume, where the density
+(`THIGH_DENSITY`) is itself derived from a linear mass model, not a fixed
+material constant -- see "Fixed hardware constants" below; visual-class
+geoms use `density="0"` so they don't double-count against the collision
+geoms.
 
 **`shank_{SIDE}_Link`** (child of `thigh_{SIDE}_Link`): positioned at
 `spec.thigh_length * THIGH_DIR_XZ` (y always 0) -- i.e. `thigh_length` scales
@@ -140,8 +142,9 @@ fixed `SHANK_QUAT` (biped.xml's real thigh->shank bend). Geometry is a
 placeholder cross-section (`SHANK_BOX_HALF`, reused verbatim from biped.xml's
 `knee_R_Link`/`knee_L_Link` box -- NOT `spec.shank_width`/`shank_thickness`,
 still not spec-controlled). No explicit `<inertial>`: mass/inertia
-auto-derived by MuJoCo from geom density x volume (`SHANK_DENSITY`, aluminum
--- same convention as the thigh/foot, not a fixed mass/diaginertia anymore).
+auto-derived by MuJoCo from geom density x volume (`SHANK_DENSITY`,
+lambda-derived -- same convention as the thigh/foot, not a fixed
+mass/diaginertia anymore).
 
 **`ankle_{SIDE}_act`** (child of `shank_{SIDE}_Link`, no `<joint>` -- welded,
 same treatment as abad/hip/knee's housings): positioned at
@@ -166,8 +169,8 @@ unrelated offset -- still the fixed `FOOT_X_OFFSET_FRAC` (0.05) /
 `FOOT_ANKLE_GAP` (0.02 m) `builder.py` constants, so they reproduce
 biped.xml's real foot placement exactly at the baseline foot dimensions.
 Box/site are sized from `spec.foot_length`/`foot_width`/`foot_height`;
-mass/inertia auto-derived from geom density x volume (`FOOT_DENSITY`, same
-convention as the thigh).
+mass/inertia auto-derived from geom density x volume (`FOOT_DENSITY`,
+lambda-derived -- same convention as the thigh).
 
 Because `thigh_length`/`shank_length` scale a FIXED direction rather than
 being re-derived from a full 3D vector, the baseline defaults
@@ -181,9 +184,9 @@ a known, deliberate trade-off for having a tunable length at all, not a bug.
 | Constant | Value | What it is |
 |---|---|---|
 | `THIGH_BOX_HALF` | (0.025, 0.016) m | Thigh box cross-section, `(local-X half-extent, local-Y half-extent)` -- fixed, NOT `spec.thigh_thickness`; box LENGTH is computed per-spec, not stored here. `THIGH_BOX_HALF[1]` (the Y-extent -- stays aligned with global Y since `THIGH_BOX_QUAT` only rotates about Y) also doubles as the knee/thigh gap-fill width in the `y_knee`/`y_thigh` offset formulas (formerly the separate `spec.thigh_width` field); `THIGH_BOX_HALF[0]` only affects the box's extent within the sagittal X-Z plane |
-| `THIGH_DENSITY` | 2700 kg/m^3 | Aluminum, used to auto-derive thigh mass/inertia from geometry |
+| `LAMBDA_THIGH` | 4.32 kg/m | Thigh mass-per-length; `THIGH_DENSITY` is derived from this as `LAMBDA_THIGH / (width * height)` of `THIGH_BOX_HALF`, so that MuJoCo's density x volume auto-mass reduces to `M_thigh = LAMBDA_THIGH * thigh_length` regardless of box length -- see `_linear_density` in `builder.py` |
 | `SHANK_BOX_HALF` | (0.0125, 0.016) m | Placeholder shank cross-section, biped.xml's real box -- NOT `spec.shank_width`/`shank_thickness` |
-| `SHANK_DENSITY` | 2700 kg/m^3 | Aluminum, used to auto-derive shank mass/inertia from geometry (same convention as `THIGH_DENSITY`/`FOOT_DENSITY`) |
+| `LAMBDA_SHANK` | 2.16 kg/m | Shank mass-per-length, same `_linear_density` derivation as `LAMBDA_THIGH` -- `SHANK_DENSITY` is derived from this and `SHANK_BOX_HALF` |
 | `FOOT_BOX_HALF` | (0.035, 0.015) m | Foot box cross-section (half-width, half-height) -- fixed, NOT `spec.foot_width`/`foot_height` (removed fields); only `spec.foot_length` (the box's x-extent) stays spec-controlled |
 | `SHANK_QUAT` | `0.939692 0 -0.342022 0` | Fixed thigh->shank bend, biped.xml's real CAD angle |
 | `KNEE_RANGE` | (-1.21357, 1.17267) | Same both legs, matching biped.xml's real `knee_R_Joint` range |
@@ -192,10 +195,12 @@ a known, deliberate trade-off for having a tunable length at all, not a bug.
 | `ABAD_RANGE` / `HIP_RANGE` | (-0.38397, 1.39626) / (-1.39626, 1.01229) | Same both legs, from biped.xml |
 | `FOOT_X_OFFSET_FRAC` | 0.05 | Foot box/site centre offset forward of the ankle joint, as a fraction of `foot_length` -- internal to `foot_{SIDE}_Link`, unrelated to `clearance_ankleAct2foot_*` |
 | `FOOT_ANKLE_GAP` | 0.02 m | Vertical gap from the ankle joint down to the top of the foot box -- same internal-to-`foot_{SIDE}_Link` caveat |
-| `FOOT_DENSITY` | 1000 kg/m^3 | MuJoCo's own default, used to auto-derive foot mass/inertia from geometry (same convention as `THIGH_DENSITY`) |
+| `LAMBDA_FOOT` | 2.1 kg/m | Foot mass-per-length, same `_linear_density` derivation as `LAMBDA_THIGH` -- `FOOT_DENSITY` is derived from this and `FOOT_BOX_HALF` |
 | `HOUSING_GAP` | 0.005 m | Unused by the current placement formulas; kept for reference |
 | `JOINT_DYNAMICS` | see `biped.xml`'s `<default>` | Per-class `damping`/`armature`/`frictionloss` |
-| Trunk density | 899.5 kg/m^3 | Hardcoded in `build_xml`, calibrated so the baseline trunk box masses ~12 kg |
+| `TRUNK_SHELL_THICKNESS` | 0.003 m | Trunk shell wall thickness -- `base_Link` is modeled as a hollow shell (battery/electronics inside), not a solid block; mass = surface area x thickness x `TRUNK_SHELL_DENSITY`, see `build_xml` |
+| `TRUNK_SHELL_DENSITY` | 2700 kg/m^3 | Trunk shell material density (aluminum placeholder) |
+| `TRUNK_EXTRA_MASS` | 0.0 kg | Fixed payload mass added on top of the shell mass (battery + electronics) -- user-supplied, tune to your actual hardware |
 
 Ankle-actuator inertial is NOT a fixed constant here -- it comes from the
 catalog's `act_ankle.mass` plus geometry-derived inertia, the same

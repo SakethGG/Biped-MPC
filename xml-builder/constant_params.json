@@ -20,9 +20,13 @@
   "ABAD_RANGE": [-0.38397, 1.39626],
   "HIP_RANGE": [-1.39626, 1.01229],
 
-  "SHANK_DENSITY": 2700.0,
-  "THIGH_DENSITY": 2700.0,
-  "FOOT_DENSITY": 1000.0,
+  "LAMBDA_THIGH": 2.9,
+  "LAMBDA_SHANK": 0.8,
+  "LAMBDA_FOOT": 0.8,
+
+  "TRUNK_SHELL_THICKNESS": 0.003,
+  "TRUNK_SHELL_DENSITY": 2700.0,
+  "TRUNK_EXTRA_MASS": 7.0,
 
   "JOINT_DYNAMICS": {
     "abad":  {"damping": 1.0, "armature": 0.05, "frictionloss": 0.10},

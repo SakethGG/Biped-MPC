@@ -6,7 +6,7 @@ const RobotMujocoSpec& getTronBipedMujocoSpec() {
         "base_Link",
         {
             {Side::Left,
-             "ankle_L_Link",
+             "foot_L_Link",
              "foot_L",
              {
                  {"abad_L_Joint", "abad_L_motor"},
@@ -15,7 +15,7 @@ const RobotMujocoSpec& getTronBipedMujocoSpec() {
                  {"ankle_L_Joint", "ankle_L_motor"},
              }},
             {Side::Right,
-             "ankle_R_Link",
+             "foot_R_Link",
              "foot_R",
              {
                  {"abad_R_Joint", "abad_R_motor"},

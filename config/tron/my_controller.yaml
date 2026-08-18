@@ -8,8 +8,10 @@ timing:
   horizon_steps: 25
 
 model:
-  xml_path: models/tron/biped_design.xml
-  auxiliary_xml_path: models/tron/biped_design.xml
+  # xml_path: models/tron/biped_design.xml
+  # auxiliary_xml_path: models/tron/biped_design.xml
+  xml_path: xml-builder/design.xml
+  auxiliary_xml_path: xml-builder/design.xml
   foot_end_effector_source: site  # site or collision_geom_center
   gravity: -9.81
 

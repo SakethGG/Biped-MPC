@@ -107,9 +107,17 @@ ANKLE_RANGE = tuple(_C["ANKLE_RANGE"])  # same both legs, from biped.xml
 ABAD_RANGE = tuple(_C["ABAD_RANGE"])    # same both legs, from biped.xml
 HIP_RANGE = tuple(_C["HIP_RANGE"])      # same both legs, from biped.xml
 
-SHANK_DENSITY = _C["SHANK_DENSITY"]   # aluminum, kg/m^3 -- auto-derives shank mass/inertia from geometry, same as THIGH_DENSITY
-THIGH_DENSITY = _C["THIGH_DENSITY"]   # aluminum, kg/m^3 -- auto-derives thigh mass/inertia from geometry
-FOOT_DENSITY = _C["FOOT_DENSITY"]
+LAMBDA_THIGH = _C["LAMBDA_THIGH"]   # thigh mass-per-length, kg/m -- hardware constant
+LAMBDA_SHANK = _C["LAMBDA_SHANK"]   # shank mass-per-length, kg/m -- hardware constant
+LAMBDA_FOOT = _C["LAMBDA_FOOT"]     # foot mass-per-length, kg/m -- hardware constant
+
+# trunk shell model: trunk_Link is a hollow enclosure (battery + electronics
+# inside), not a solid block -- mass = shell surface area * wall thickness *
+# material density, plus a fixed payload mass for whatever's inside. See
+# build_xml's trunk mass calc.
+TRUNK_SHELL_THICKNESS = _C["TRUNK_SHELL_THICKNESS"]   # shell wall thickness, m
+TRUNK_SHELL_DENSITY = _C["TRUNK_SHELL_DENSITY"]       # shell material density, kg/m^3
+TRUNK_EXTRA_MASS = _C["TRUNK_EXTRA_MASS"]             # fixed battery/electronics payload mass, kg -- user-supplied
 
 JOINT_DYNAMICS: Dict[str, Dict[str, float]] = _C["JOINT_DYNAMICS"]
 
@@ -143,6 +151,36 @@ THIGH_BOX_DIR = np.array([THIGH_DIR_XZ[0], 0.0, THIGH_DIR_XZ[1]])
 THIGH_BOX_QUAT = quat_about_y_from_xz_dir(THIGH_DIR_XZ[0], THIGH_DIR_XZ[1])
 
 
+def _linear_density(lam: float, box_half: Tuple[float, float], length_frac: float = 1.0) -> float:
+    """Volumetric density (kg/m^3) that makes a fixed-cross-section box's
+    MuJoCo-auto-computed mass (density * width * height * geom_length)
+    reduce to the linear mass model M = lam * full_length, where full_length
+    is the link's real length -- NOT necessarily the box geom's own length.
+
+    `length_frac` is geom_length / full_length: thigh/shank boxes are drawn
+    LINK_BOX_LENGTH_FRAC short of their link's real length purely so
+    adjacent links don't visually overlap at the joint, so their mass would
+    be undercounted by that same fraction unless the density compensates:
+    density = mass/(geom_length*B*H) = (lam*full_length)/(length_frac*full_length*B*H)
+            = lam/(length_frac*B*H) -- lam, B, H, and length_frac are all
+    fixed constants, so this is itself a constant, independent of the link's
+    actual length. length_frac=1.0 (the default) is for links -- like the
+    foot -- whose box geom already spans their full length."""
+    width, height = 2.0 * box_half[0], 2.0 * box_half[1]
+    return lam / (width * height * length_frac)
+
+
+# lam/(B*H*length_frac) per-link -- same linear mass model (mass = lambda *
+# full_length), expressed as the equivalent volumetric density MuJoCo's
+# density*volume auto-mass needs. thigh/shank correct for their box geom
+# being drawn LINK_BOX_LENGTH_FRAC short (see _linear_density) so their mass
+# still reflects the link's real, full length, not the shortened box; the
+# foot box already spans spec.foot_length in full, so no correction there.
+THIGH_DENSITY = _linear_density(LAMBDA_THIGH, THIGH_BOX_HALF, LINK_BOX_LENGTH_FRAC)
+SHANK_DENSITY = _linear_density(LAMBDA_SHANK, SHANK_BOX_HALF, LINK_BOX_LENGTH_FRAC)
+FOOT_DENSITY = _linear_density(LAMBDA_FOOT, FOOT_BOX_HALF)
+
+
 # ---------------------------------------------------------------------------
 def _housing_dims(act) -> Tuple[float, float]:
     """(radius, halflen) for an actuator's housing cylinder, from its
@@ -156,6 +194,34 @@ def cyl_inertia(mass: float, r: float, length: float) -> Tuple[float, float]:
     i_axial = 0.5 * mass * r * r
     i_perp = (1.0 / 12.0) * mass * (3 * r * r + length * length)
     return i_perp, i_axial
+
+
+def _solid_box_axis_inertia(mass: float, d1: float, d2: float) -> float:
+    """Solid-cuboid moment of inertia about one central principal axis,
+    given the mass and the box's two OTHER edge lengths (the ones
+    perpendicular to that axis) -- the standard (1/12)*m*(d1^2+d2^2)."""
+    return (1.0 / 12.0) * mass * (d1 * d1 + d2 * d2)
+
+
+def hollow_box_inertia(mass: float, a: float, b: float, c: float, t: float) -> Tuple[float, float, float]:
+    """(Ix, Iy, Iz) for a thick-walled hollow cuboid shell of uniform wall
+    thickness `t`, outer dims a(x) * b(y) * c(z), and total shell mass
+    `mass` -- computed as the outer solid box's inertia minus the inner
+    cavity's, where the cavity is treated as a same-density solid block of
+    mass m = mass * (a-2t)(b-2t)(c-2t)/(abc) so it subtracts out cleanly."""
+    inner_a, inner_b, inner_c = a - 2.0 * t, b - 2.0 * t, c - 2.0 * t
+    if inner_a <= 0 or inner_b <= 0 or inner_c <= 0:
+        raise ValueError(
+            f"trunk shell wall thickness ({t:.4f} m) is too large for the trunk's "
+            f"outer dims ({a:.4f} x {b:.4f} x {c:.4f} m) -- the inner cavity would "
+            "have zero or negative extent on at least one axis. Reduce "
+            "TRUNK_SHELL_THICKNESS or increase the trunk dims."
+        )
+    cavity_mass = mass * (inner_a * inner_b * inner_c) / (a * b * c)
+    ix = _solid_box_axis_inertia(mass, b, c) - _solid_box_axis_inertia(cavity_mass, inner_b, inner_c)
+    iy = _solid_box_axis_inertia(mass, a, c) - _solid_box_axis_inertia(cavity_mass, inner_a, inner_c)
+    iz = _solid_box_axis_inertia(mass, a, b) - _solid_box_axis_inertia(cavity_mass, inner_a, inner_b)
+    return ix, iy, iz
 
 
 def _fmt(x: float, p: int = 6) -> str:
@@ -316,12 +382,12 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
 
             <body name="thigh_{side}_Link" pos="{_vec3(L['thigh_pos_rel'])}">
               <geom class="visual" type="box" size="{box_size}" pos="{_vec3(box_center_local)}" quat="{box_quat}" rgba="{LINK_COLORS['thigh']}"/>
-              <geom class="collision" type="box" size="{box_size}" pos="{_vec3(box_center_local)}" quat="{box_quat}" density="{THIGH_DENSITY}"/>
+              <geom class="collision" type="box" size="{box_size}" pos="{_vec3(box_center_local)}" quat="{box_quat}" density="{_fmt(THIGH_DENSITY)}"/>
 
               <body name="shank_{side}_Link" pos="{shank_pos_rel}" quat="{SHANK_QUAT}">
                 <joint class="knee" name="knee_{side}_Joint" axis="0 -1 0" range="{_fmt(knee_lo)} {_fmt(knee_hi)}"/>
                 <geom class="visual" type="box" size="{shank_box_size}" pos="{shank_box_pos}" rgba="{LINK_COLORS['shank']}"/>
-                <geom class="collision" type="box" size="{shank_box_size}" pos="{shank_box_pos}" density="{SHANK_DENSITY}"/>
+                <geom class="collision" type="box" size="{shank_box_size}" pos="{shank_box_pos}" density="{_fmt(SHANK_DENSITY)}"/>
 
                 <body name="ankle_{side}_act" pos="{ankle_pos_rel}" quat="{ANKLE_QUAT}">
                   {_act_inertial_block(act_ankle.mass, r_ankle, hl_ankle, QUAT_ALIGN_Y)}
@@ -330,7 +396,7 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
                   <body name="foot_{side}_Link" pos="{foot_pos_rel}">
                     <joint class="ankle" name="ankle_{side}_Joint" axis="0 -1 0" range="{_vec(*ANKLE_RANGE)}"/>
                     <geom class="visual" type="box" size="{foot_size}" pos="{_fmt(x_offset_ankleAct2foot)} 0.0 {_fmt(z_offset_ankleAct2foot)}" rgba="{LINK_COLORS['ankle']}"/>
-                    <geom class="collision" name="foot_{side}_collision" type="box" size="{foot_size}" pos="{_fmt(x_offset_ankleAct2foot)} 0.0 {_fmt(z_offset_ankleAct2foot)}" density="{FOOT_DENSITY}"/>
+                    <geom class="collision" name="foot_{side}_collision" type="box" size="{foot_size}" pos="{_fmt(x_offset_ankleAct2foot)} 0.0 {_fmt(z_offset_ankleAct2foot)}" density="{_fmt(FOOT_DENSITY)}"/>
                     <site name="foot_{side}" pos="{_fmt(x_offset_ankleAct2foot)} 0.0 {_fmt(z_bottom_ankleAct2foot)}" size="0.01"/>
                   </body>
                 </body>
@@ -348,10 +414,32 @@ def build_xml(spec) -> str:
     act_abad, act_hip, act_knee, act_ankle = spec.actuators()
     check_geometry(spec, act_abad, act_hip)
 
-    m_trunk_box = 899.5 * spec.trunk_length * spec.trunk_width * spec.trunk_thickness
-    trunk_Ixx = m_trunk_box * (spec.trunk_width ** 2 + spec.trunk_thickness ** 2) / 12.0
-    trunk_Iyy = m_trunk_box * (spec.trunk_length ** 2 + spec.trunk_thickness ** 2) / 12.0
-    trunk_Izz = m_trunk_box * (spec.trunk_length ** 2 + spec.trunk_width ** 2) / 12.0
+    # trunk_Link is a hollow shell (encloses the battery/electronics), not a
+    # solid block -- mass = shell surface area * wall thickness * material
+    # density, plus TRUNK_EXTRA_MASS for whatever's inside. Inertia is the
+    # SUM of two separate rigid bodies sharing the same center: (1) the
+    # thick-walled hollow shell itself (outer solid box minus its inner
+    # cavity, both at the shell's own mass/density), and (2) a solid cuboid
+    # "battery pack" of mass TRUNK_EXTRA_MASS. The battery box is assumed to
+    # fill the shell's own inner cavity dims (trunk dims minus 2x wall
+    # thickness on each axis) -- there's no separate battery-size constant,
+    # so this is the natural "whatever's inside just fits the cavity"
+    # assumption; tune TRUNK_SHELL_THICKNESS or add a dedicated battery-size
+    # constant if that's ever not a good approximation.
+    a, b, c, t = spec.trunk_length, spec.trunk_width, spec.trunk_thickness, TRUNK_SHELL_THICKNESS
+    trunk_surface_area = 2.0 * (a * b + b * c + c * a)
+    m_shell = trunk_surface_area * t * TRUNK_SHELL_DENSITY
+    m_trunk = m_shell + TRUNK_EXTRA_MASS
+
+    shell_Ixx, shell_Iyy, shell_Izz = hollow_box_inertia(m_shell, a, b, c, t)
+    inner_a, inner_b, inner_c = a - 2.0 * t, b - 2.0 * t, c - 2.0 * t
+    batt_Ixx = _solid_box_axis_inertia(TRUNK_EXTRA_MASS, inner_b, inner_c)
+    batt_Iyy = _solid_box_axis_inertia(TRUNK_EXTRA_MASS, inner_a, inner_c)
+    batt_Izz = _solid_box_axis_inertia(TRUNK_EXTRA_MASS, inner_a, inner_b)
+
+    trunk_Ixx = shell_Ixx + batt_Ixx
+    trunk_Iyy = shell_Iyy + batt_Iyy
+    trunk_Izz = shell_Izz + batt_Izz
 
     base_z = spec.body_height   # direct spawn height -- no hip_z_drop composition in this topology
 
@@ -420,7 +508,7 @@ def build_xml(spec) -> str:
 
     <body name="base_Link" pos="0 0 {_fmt(base_z)}">
       <freejoint name="root"/>
-      <inertial pos="0 0 0" mass="{_fmt(m_trunk_box)}" diaginertia="{_vec(trunk_Ixx, trunk_Iyy, trunk_Izz)}"/>
+      <inertial pos="0 0 0" mass="{_fmt(m_trunk)}" diaginertia="{_vec(trunk_Ixx, trunk_Iyy, trunk_Izz)}"/>
       <site name="imu" pos="0 0 0" size="0.01"/>
       <geom class="visual" type="box" size="{_vec(spec.trunk_length / 2.0, spec.trunk_width / 2.0, spec.trunk_thickness / 2.0)}" rgba="0.79216 0.81961 0.93333 1"/>
       <geom class="collision" type="box" size="{_vec(spec.trunk_length / 2.0, spec.trunk_width / 2.0, spec.trunk_thickness / 2.0)}"/>
