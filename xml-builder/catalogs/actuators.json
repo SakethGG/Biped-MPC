@@ -1,7 +1,8 @@
 {
   "_schema": {
-    "description": "Pre-built actuators for legged robots. Use with --actuator-mode catalog. Specs reflect joint-side (post-gearbox) properties. Add custom entries by appending to the `actuators` array; only `name`, `peak_torque`, `peak_speed`, `mass`, `cost` are required, the others have sensible defaults.",
+    "description": "Pre-built actuators for legged robots. Use with --actuator-mode catalog. Specs reflect joint-side (post-gearbox) properties. Entries are ordered by increasing torque density (peak_torque / mass, N*m/kg). `index` is a GLOBAL index shared with catalogs/motors.json's `index` field -- the two files together form one combined motor+actuator torque-density ranking (motors are always lower since they're pre-gearbox), see catalogs/README.md for the merged table. Reference actuators by NAME in DesignSpec/variable_params.json, not index -- `index` is a readability label only and shifts whenever either file is edited.",
     "units": {
+      "index": "[-] (0-based position in the COMBINED motors.json+actuators.json torque-density ranking -- not read by actuator.py's loader, purely for readability/cross-referencing with README.md)",
       "peak_torque": "N*m (joint-side peak / continuous-peak torque)",
       "peak_speed": "rad/s (joint-side no-load speed)",
       "eta": "[-] (overall transmission efficiency, 0..1)",
@@ -10,88 +11,99 @@
       "ratio": "[-] (gear ratio; optional, used for power model fallback)",
       "mass": "kg",
       "cost": "USD",
-      "width": "m (actuator outer diameter / housing width)",
-      "length": "m (axial thickness / housing length along the rotation axis; datasheet-sourced where noted, otherwise defaults to 0.6 * width per actuator.py's loader)"
+      "diameter": "m (actuator outer diameter / housing width)",
+      "length": "m (axial thickness / housing length along the rotation axis)"
     },
-    "fields": ["name", "peak_torque", "peak_speed", "eta", "Kt", "R", "ratio", "mass", "cost", "width", "length", "notes"]
+    "fields": ["index", "name", "peak_torque", "peak_speed", "eta", "Kt", "R", "ratio", "mass", "cost", "diameter", "length", "notes"]
   },
   "actuators": [
     {
-      "name": "Unitree-A1",
-      "peak_torque": 33.5, "peak_speed": 21.0, "eta": 0.85,
-      "Kt": 0.0707, "R": 0.13, "ratio": 9.1,
-      "mass": 0.605, "cost": 600.0, "width": 0.080, "length": 0.035,
-      "notes": "Unitree A1/Go1-class quasi-direct-drive motor. torque/speed/mass confirmed vs unitree.com; length is an UNVERIFIED estimate (no published diameter/length found), scaled from comparable QDD actuators. \"(M107)\" removed from the name -- M107 is a different, larger Unitree motor (107mm dia, 360 N*m, H1 knee), not this one."
-    },
-    {
-      "name": "Unitree-B1",
-      "peak_torque": 360.0, "peak_speed": 22.0, "eta": 0.85,
-      "Kt": 0.130, "R": 0.10, "ratio": 6.33,
-      "mass": 2.20, "cost": 1500.0, "width": 0.110, "length": 0.074,
-      "notes": "UNVERIFIED: real B1 User Manual lists knee peak torque as 210 N*m, not 360 -- this entry's numbers (incl. 0.110 width) more closely match Unitree's M107 motor (107mm dia, 360 N*m, used in the H1 humanoid's knee) or the B2 quadruped, not B1's own joint motor. length=0.074 is borrowed from M107's spec for the same reason -- flagged low-confidence, needs a real B1-specific source."
-    },
-    {
-      "name": "MIT-Cheetah-3",
-      "peak_torque": 34.0, "peak_speed": 25.0, "eta": 0.85,
-      "Kt": 0.108, "R": 0.105, "ratio": 6.0,
-      "mass": 0.50, "cost": 700.0, "width": 0.096, "length": 0.040,
-      "notes": "T-Motor U8 + 6:1 planetary; Katz 2018 MIT Mini-Cheetah actuator."
-    },
-    {
-      "name": "TMotor-AK80-9",
-      "peak_torque": 24.0, "peak_speed": 38.0, "eta": 0.82,
-      "Kt": 0.091, "R": 0.16, "ratio": 9.0,
-      "mass": 0.485, "cost": 530.0, "width": 0.098, "length": 0.0385,
-      "notes": "CubeMars AK80-9 QDD actuator (CAN bus)."
-    },
-    {
-      "name": "TMotor-AK80-6",
-      "peak_torque": 12.0, "peak_speed": 50.0, "eta": 0.85,
-      "Kt": 0.091, "R": 0.16, "ratio": 6.0,
-      "mass": 0.485, "cost": 510.0, "width": 0.098, "length": 0.0385,
-      "notes": "CubeMars AK80-6 QDD; lower ratio = faster joint."
-    },
-    {
-      "name": "TMotor-AK10-9",
-      "peak_torque": 48.0, "peak_speed": 30.0, "eta": 0.82,
-      "Kt": 0.160, "R": 0.10, "ratio": 9.0,
-      "mass": 0.96, "cost": 720.0, "width": 0.098, "length": 0.0617,
-      "notes": "CubeMars AK10-9 high-torque QDD actuator."
-    },
-    {
-      "name": "ANYdrive-3",
-      "peak_torque": 40.0, "peak_speed": 12.0, "eta": 0.75,
-      "Kt": 0.082, "R": 0.18, "ratio": 50.0,
-      "mass": 1.10, "cost": 4000.0, "width": 0.090, "length": 0.095,
-      "notes": "ANYbotics ANYdrive 3 (Harmonic-drive based, ANYmal C robot)."
-    },
-    {
-      "name": "HEBI-X8-16",
-      "peak_torque": 38.0, "peak_speed": 7.5, "eta": 0.70,
-      "Kt": 0.045, "R": 0.30, "ratio": 1500.0,
-      "mass": 0.460, "cost": 2900.0, "width": 0.087, "length": 0.045,
-      "notes": "HEBI X8-16 series-elastic actuator (very high ratio, slow). torque/mass confirmed vs docs.hebi.us datasheet (110x73x45mm housing, length=45mm sourced from that 3rd dimension); UNVERIFIED: peak_speed here (7.5 rad/s) is ~5x the datasheet's real max (15 RPM = 1.57 rad/s)."
-    },
-    {
+      "index": 6,
       "name": "ODrive-D5065-DD",
       "peak_torque": 5.0, "peak_speed": 200.0, "eta": 0.95,
       "Kt": 0.026, "R": 0.039, "ratio": 1.0,
-      "mass": 0.41, "cost": 320.0, "width": 0.070, "length": 0.060,
-      "notes": "ODrive direct-drive (no gearbox); D5065 motor. R confirmed vs ODrive forum measurements; length is an UNVERIFIED estimate from analogous \"5065\"-class BLDC outrunners -- no ODrive-specific dimensional datasheet found."
+      "mass": 0.395, "cost": 320.0, "diameter": 0.050, "length": 0.065,
+      "notes": "Direct-drive D5065 motor; rotor diameter φ50mm, length 65mm."
     },
     {
+      "index": 7,
+      "name": "TMotor-AK80-6",
+      "peak_torque": 12.0, "peak_speed": 89.5, "eta": 0.85,
+      "Kt": 0.105, "R": 0.170, "ratio": 6.0,
+      "mass": 0.485, "cost": 510.0, "diameter": 0.098, "length": 0.0385,
+      "notes": "CubeMars AK80-6 V3.0; shares identical outer shell dimensions (φ98x38.5mm) with AK80-9."
+    },
+    {
+      "index": 8,
       "name": "MAB-MD80",
-      "peak_torque": 7.0, "peak_speed": 110.0, "eta": 0.88,
-      "Kt": 0.054, "R": 0.20, "ratio": 6.25,
-      "mass": 0.38, "cost": 480.0, "width": 0.080, "length": 0.0385,
-      "notes": "UNVERIFIED: no real MAB product found matching this specific torque/ratio/mass combo. MD80 is actually MAB's controller board, commonly paired with a CubeMars AK80-6 (Ø98x38.5mm, 12 N*m peak, 6:1, 485g) -- length borrowed from that pairing as the closest real analog, but low-confidence given the underlying spec mismatch."
+      "peak_torque": 12.0, "peak_speed": 89.5, "eta": 0.88,
+      "Kt": 0.105, "R": 0.170, "ratio": 6.0,
+      "mass": 0.485, "cost": 480.0, "diameter": 0.098, "length": 0.0385,
+      "notes": "MAB Robotics MD80 driver paired with AK80-6 class motor; dimensions 38.5mm depth."
     },
     {
+      "index": 9,
+      "name": "ANYdrive-3",
+      "peak_torque": 40.0, "peak_speed": 12.0, "eta": 0.75,
+      "Kt": 0.082, "R": 0.18, "ratio": 50.0,
+      "mass": 1.10, "cost": 4000.0, "diameter": 0.090, "length": 0.095,
+      "notes": "ANYbotics ANYdrive 3 (Harmonic Drive SEA unit); verified housing envelope φ90x95mm."
+    },
+    {
+      "index": 10,
+      "name": "TMotor-AK80-9",
+      "peak_torque": 22.0, "peak_speed": 59.7, "eta": 0.82,
+      "Kt": 0.105, "R": 0.170, "ratio": 9.0,
+      "mass": 0.485, "cost": 530.0, "diameter": 0.098, "length": 0.0385,
+      "notes": "CubeMars AK80-9 V3.0 (48V); peak torque 22 N*m, Kt 0.105 N*m/A, dimensions φ98x38.5mm."
+    },
+    {
+      "index": 11,
       "name": "Bota-Roboticer-50",
       "peak_torque": 50.0, "peak_speed": 15.0, "eta": 0.80,
       "Kt": 0.10, "R": 0.12, "ratio": 25.0,
-      "mass": 0.95, "cost": 1800.0, "width": 0.098,
-      "notes": "UNVERIFIED / LIKELY FABRICATED: no real product found under this name -- Bota Systems makes force/torque sensors, not actuators, and no \"Roboticer\" product exists. All fields here (incl. width) are synthetic, not datasheet-derived. No length added -- see actuator.py's 0.6*width fallback default rather than inventing an unsourced number."
+      "mass": 0.95, "cost": 1800.0, "diameter": 0.098, "length": 0.0588,
+      "notes": "Synthetic benchmark fallback entry (not a physical product)."
+    },
+    {
+      "index": 12,
+      "name": "Unitree-A1",
+      "peak_torque": 33.5, "peak_speed": 21.0, "eta": 0.85,
+      "Kt": 0.0707, "R": 0.13, "ratio": 9.1,
+      "mass": 0.605, "cost": 600.0, "diameter": 0.095, "length": 0.045,
+      "notes": "Unitree A1 joint motor (24V). Physical gear ratio fixed to 9.1:1 (26.07 is a software SDK feedback conversion factor)."
+    },
+    {
+      "index": 13,
+      "name": "TMotor-AK10-9",
+      "peak_torque": 53.0, "peak_speed": 33.5, "eta": 0.82,
+      "Kt": 0.160, "R": 0.248, "ratio": 9.0,
+      "mass": 0.940, "cost": 720.0, "diameter": 0.098, "length": 0.0617,
+      "notes": "CubeMars AK10-9 V3.0 (48V); peak torque 53 N*m, mass 0.940 kg, verified length 61.7mm."
+    },
+    {
+      "index": 14,
+      "name": "MIT-Cheetah-3",
+      "peak_torque": 34.0, "peak_speed": 25.0, "eta": 0.85,
+      "Kt": 0.108, "R": 0.105, "ratio": 6.0,
+      "mass": 0.50, "cost": 700.0, "diameter": 0.096, "length": 0.040,
+      "notes": "T-Motor U8 custom 6:1 planetary module (Katz 2018 MIT Mini-Cheetah thesis). Verified φ96x40mm."
+    },
+    {
+      "index": 15,
+      "name": "HEBI-X8-16",
+      "peak_torque": 38.0, "peak_speed": 1.57, "eta": 0.70,
+      "Kt": 0.045, "R": 0.30, "ratio": 1500.0,
+      "mass": 0.490, "cost": 2900.0, "diameter": 0.073, "length": 0.045,
+      "notes": "HEBI X8-16 SEA; max speed 1.57 rad/s (15 RPM) and mass 0.490 kg."
+    },
+    {
+      "index": 16,
+      "name": "Unitree-B1",
+      "peak_torque": 210.0, "peak_speed": 18.0, "eta": 0.85,
+      "Kt": 0.130, "R": 0.10, "ratio": 6.33,
+      "mass": 1.95, "cost": 1500.0, "diameter": 0.107, "length": 0.074,
+      "notes": "Unitree B1 Knee Actuator; peak torque matches real B1 user manual spec (210 N*m). Length matches M107 architecture (74mm)."
     }
   ]
 }

@@ -184,8 +184,8 @@ FOOT_DENSITY = _linear_density(LAMBDA_FOOT, FOOT_BOX_HALF)
 # ---------------------------------------------------------------------------
 def _housing_dims(act) -> Tuple[float, float]:
     """(radius, halflen) for an actuator's housing cylinder, from its
-    catalog ``width`` (outer diameter) and ``length`` (axial thickness)."""
-    return act.width / 2.0, act.length / 2.0
+    catalog ``diameter`` (outer diameter) and ``length`` (axial thickness)."""
+    return act.diameter / 2.0, act.length / 2.0
 
 
 def cyl_inertia(mass: float, r: float, length: float) -> Tuple[float, float]:

@@ -3,17 +3,17 @@
   "trunk_width": 0.25,
   "trunk_thickness": 0.22,
 
-  "act_abduction": 2,
+  "act_abduction": "MIT-Cheetah-3",
   "clearance_trunk2abadAct_x": 0.0,
   "clearance_trunk2abadAct_y": 0.0,
   "clearance_trunk2abadAct_z": 0.050,
 
-  "act_hip": 2,
+  "act_hip": "MIT-Cheetah-3",
   "clearance_abadAct2hipAct_x": 0.020,
   "clearance_abadAct2hipAct_y": 0.010,
   "clearance_abadAct2hipAct_z": 0.0,
 
-  "act_knee": 2,
+  "act_knee": "MIT-Cheetah-3",
   "clearance_hipAct2kneeAct_x": 0.0,
   "clearance_hipAct2kneeAct_y": 0.01,
   "clearance_hipAct2kneeAct_z": 0.0,
@@ -25,7 +25,7 @@
 
   "shank_length": 0.30,
 
-  "act_ankle": 2,
+  "act_ankle": "MIT-Cheetah-3",
   "clearance_shank2ankleAct_x": 0.0,
   "clearance_shank2ankleAct_y": 0.0,
   "clearance_shank2ankleAct_z": 0.0,

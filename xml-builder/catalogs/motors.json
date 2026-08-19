@@ -1,7 +1,8 @@
 {
   "_schema": {
-    "description": "BLDC motor catalog for use with COMPAct-style actuator decomposition. Each entry is a single motor — gearboxes are added at runtime to form an Actuator. Add custom motors by appending to the `motors` array.",
+    "description": "BLDC motor catalog for use with COMPAct-style actuator decomposition. Each entry is a single motor — gearboxes are added at runtime to form an Actuator. Add custom motors by appending to the `motors` array. Entries are ordered by increasing motor-side torque density (Kt*Imax / mass, N*m/kg). `index` is a GLOBAL index shared with catalogs/actuators.json's `index` field -- the two files together form one combined motor+actuator torque-density ranking (motors always land at the low end since they're pre-gearbox), see catalogs/README.md for the merged table.",
     "units": {
+      "index": "[-] (0-based position in the COMBINED motors.json+actuators.json torque-density ranking -- not read by actuator.py's loader, purely for readability/cross-referencing with README.md)",
       "Kt": "N*m/A (torque constant)",
       "R": "ohm (terminal resistance)",
       "Imax": "A (peak phase current, thermal/electrical)",
@@ -10,44 +11,57 @@
       "mass": "kg",
       "cost": "USD"
     },
-    "fields": ["name", "Kt", "R", "Imax", "omega_nl", "rotor_inertia", "mass", "cost", "notes"]
+    "fields": ["index", "name", "Kt", "R", "Imax", "omega_nl", "rotor_inertia", "mass", "diameter", "length",  "cost", "notes"]
   },
   "motors": [
     {
+      "index": 0,
+      "name": "Maxon-EC-i-52",
+      "Kt": 0.068, "R": 0.117, "Imax": 12.0, "omega_nl": 410.0,
+      "rotor_inertia": 2.64e-4, "mass": 0.75, "cost": 480.0,
+      "diameter": 0.052, "length": 0.055,
+      "notes": "Maxon EC-i 52 (200W base model); diameter 52.0mm, body length 55.0mm (excl. shaft)."
+    },
+    {
+      "index": 1,
       "name": "M-mini",
       "Kt": 0.060, "R": 0.18, "Imax": 18.0, "omega_nl": 310.0,
       "rotor_inertia": 3.2e-5, "mass": 0.22, "cost": 180.0,
+      "diameter": 0.046, "length": 0.024,
       "notes": "Small flat BLDC; representative of Antigravity 4006 / iPower class."
     },
     {
+      "index": 2,
       "name": "M-mid",
       "Kt": 0.085, "R": 0.11, "Imax": 25.0, "omega_nl": 270.0,
       "rotor_inertia": 7.5e-5, "mass": 0.32, "cost": 240.0,
+      "diameter": 0.060, "length": 0.028,
       "notes": "Mid-size flat BLDC; representative of T-Motor U8 / GBM5208 class."
     },
     {
+      "index": 3,
+      "name": "TMotor-U10II",
+      "Kt": 0.096, "R": 0.101, "Imax": 32.4, "omega_nl": 220.0,
+      "rotor_inertia": 1.6e-4, "mass": 0.415, "cost": 340.0,
+      "diameter": 0.092, "length": 0.0345,
+      "notes": "T-Motor U10-II KV100; outer diameter 92.0mm, axial thickness 34.5mm."
+    },
+    {
+      "index": 4,
       "name": "M-big",
-      "Kt": 0.110, "R": 0.083, "Imax": 33.0, "omega_nl": 240.0,
+      "Kt": 0.110, "R": 0.085, "Imax": 33.0, "omega_nl": 240.0,
       "rotor_inertia": 1.4e-4, "mass": 0.48, "cost": 360.0,
+      "diameter": 0.087, "length": 0.034,
       "notes": "Large flat BLDC; representative of T-Motor U10-II class."
     },
     {
+      "index": 5,
       "name": "TMotor-U8-Lite",
-      "Kt": 0.115, "R": 0.135, "Imax": 22.0, "omega_nl": 260.0,
-      "rotor_inertia": 6.0e-5, "mass": 0.24, "cost": 220.0,
-      "notes": "T-Motor U8 Lite KV150; popular in MIT-Cheetah-class quadrupeds."
-    },
-    {
-      "name": "TMotor-U10II",
-      "Kt": 0.160, "R": 0.090, "Imax": 30.0, "omega_nl": 220.0,
-      "rotor_inertia": 1.6e-4, "mass": 0.62, "cost": 320.0,
-      "notes": "T-Motor U10-II KV100; high-torque pancake for >20 kg robots."
-    },
-    {
-      "name": "Maxon-EC-i-52",
-      "Kt": 0.082, "R": 0.95, "Imax": 12.0, "omega_nl": 410.0,
-      "rotor_inertia": 5.9e-5, "mass": 0.38, "cost": 700.0,
-      "notes": "Maxon EC-i 52 brushless servo; high-cycle industrial unit."
+      "Kt": 0.0637, "R": 0.085, "Imax": 29.7, "omega_nl": 260.0,
+      "rotor_inertia": 6.0e-5, "mass": 0.239, "cost": 230.0,
+      "diameter": 0.0868, "length": 0.0265,
+      "notes": "T-Motor U8 Lite KV150; outer diameter 86.8mm, body thickness 26.5mm."
     }
   ]
+
 }

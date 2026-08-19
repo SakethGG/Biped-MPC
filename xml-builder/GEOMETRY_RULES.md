@@ -90,7 +90,7 @@ z_foot = clearance_ankleAct2foot_z
 
 `thickness_X` = the full axial length of actuator X's housing cylinder
 (`2 * X.length/2`, from the resolved `CatalogActuator`/`Actuator`'s `length`
-field). `r_X` = `X.width / 2`. `THIGH_BOX_HALF[1]` (0.016 m) replaces what
+field). `r_X` = `X.diameter / 2`. `THIGH_BOX_HALF[1]` (0.016 m) replaces what
 used to be a single decoupled "gap-fill width" value (`builder.py` constant
 `THIGH_WIDTH_GAP` -> spec field `thigh_width` -> now gone). It's index `[1]`,
 not `[0]`, that belongs here: the thigh box's `size=` is

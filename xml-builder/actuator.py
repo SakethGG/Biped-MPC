@@ -69,6 +69,8 @@ class Motor:
     rotor_inertia: float # [kg·m²]
     mass: float          # [kg]
     cost: float          # [$]
+    diameter: Optional[float] = None  # [m] motor body outer diameter, when known
+    length: Optional[float] = None    # [m] motor body axial length, when known
 
     @property
     def tau_peak_motor(self) -> float:
@@ -115,6 +117,8 @@ def load_motor_catalog_json(path: Union[str, Path]) -> List[Motor]:
                 Imax=float(d["Imax"]), omega_nl=float(d["omega_nl"]),
                 rotor_inertia=float(d.get("rotor_inertia", 0.0)),
                 mass=float(d["mass"]), cost=float(d["cost"]),
+                diameter=(float(d["diameter"]) if "diameter" in d else None),
+                length=(float(d["length"]) if "length" in d else None),
             ))
         return out
 
@@ -128,11 +132,16 @@ def load_motor_catalog_json(path: Union[str, Path]) -> List[Motor]:
             kt = _kv_to_kt(kv)
             omega_nl = kv * v_rated * (2.0 * math.pi / 60.0)
             r = _estimate_R(v_rated, i_max)
+            # "dia"/"length" (mm) are the motor body's own outer diameter/axial
+            # length in the published config -- convert to metres to match our
+            # diameter/length convention.
             out.append(Motor(
                 name=name, Kt=kt, R=r, Imax=i_max, omega_nl=omega_nl,
                 rotor_inertia=0.0,
                 mass=float(d["mass"]),
                 cost=_cost_from_mass(float(d["mass"])),
+                diameter=(float(d["dia"]) / 1000.0 if "dia" in d else None),
+                length=(float(d["length"]) / 1000.0 if "length" in d else None),
             ))
         return out
 
@@ -145,6 +154,8 @@ def load_motor_catalog_json(path: Union[str, Path]) -> List[Motor]:
                 Imax=float(d["Imax"]), omega_nl=float(d["omega_nl"]),
                 rotor_inertia=float(d.get("rotor_inertia", 0.0)),
                 mass=float(d["mass"]), cost=float(d["cost"]),
+                diameter=(float(d["diameter"]) if "diameter" in d else None),
+                length=(float(d["length"]) if "length" in d else None),
             ))
         return out
 
@@ -352,8 +363,25 @@ class Actuator:
         return float(self.motor.cost + gearbox_cost)
 
     @property
-    def width(self) -> float:
-        return self.mad.width_m
+    def diameter(self) -> float:
+        """Outer housing diameter [m]: the wider of the motor body and the
+        gearbox stage, since the assembled actuator can't be narrower than
+        either part."""
+        motor_d = self.motor.diameter if self.motor.diameter is not None else 0.0
+        return max(motor_d, self.mad.width_m)
+
+    @property
+    def length(self) -> float:
+        """Axial housing thickness [m]. The published MAD rows only carry a
+        gearbox *diameter*, not its axial length, so this uses the motor's
+        own measured body length as the best available lower bound (a
+        gearbox stage mounts behind the motor and adds to this, but that
+        isn't in the published data). Falls back to the 0.6*diameter
+        heuristic used elsewhere in this file when the motor's length is
+        unknown too."""
+        if self.motor.length is not None:
+            return self.motor.length
+        return 0.6 * self.diameter
 
     # ---- electrical-power model -------------------------------------------
     def electrical_power(self, tau_joint: float, omega_joint: float) -> float:
@@ -451,14 +479,14 @@ class CatalogActuator:
     mass: float                 # [kg]
     cost: float                 # [$]
     eta_gb: float = 0.85        # overall transmission efficiency
-    width:  float = 0.080       # outer diameter / housing width [m]
+    diameter: float = 0.080     # outer diameter / housing width [m]
     length: float = 0.048       # axial thickness / housing length along its rotation
                                  # axis [m] -- NOT in the original catalog schema (which
                                  # only tracked outer diameter). Needed for the x/y/z
                                  # placement formulas in builder.py, which treat radius
                                  # and axial half-length as independent. When a JSON
                                  # entry doesn't specify "length", the loader below
-                                 # defaults it to 0.6 * width (a flat-pancake-BLDC
+                                 # defaults it to 0.6 * diameter (a flat-pancake-BLDC
                                  # heuristic) -- flagged there, not a measured value.
     # Optional electrical params for a high-fidelity power model.
     Kt:    Optional[float] = None     # motor torque constant [N·m/A]
@@ -503,9 +531,9 @@ def load_actuator_catalog_json(path: Union[str, Path]) -> List[CatalogActuator]:
     """Load a flat actuator catalog from JSON (see catalogs/actuators.json).
 
     Required per entry: ``name``, ``peak_torque``, ``peak_speed``, ``mass``,
-    ``cost``. Optional: ``eta``, ``Kt``, ``R``, ``ratio``, ``width``,
+    ``cost``. Optional: ``eta``, ``Kt``, ``R``, ``ratio``, ``diameter``,
     ``length``, ``notes``. ``length`` (axial housing thickness) defaults to
-    ``0.6 * width`` when a JSON entry doesn't specify it -- an unvalidated
+    ``0.6 * diameter`` when a JSON entry doesn't specify it -- an unvalidated
     flat-pancake-motor heuristic, not measured data; entries that DO give a
     real ``length`` (e.g. from a datasheet) should always specify it explicitly.
     """
@@ -513,7 +541,7 @@ def load_actuator_catalog_json(path: Union[str, Path]) -> List[CatalogActuator]:
     items = data.get("actuators", data) if isinstance(data, dict) else data
     out: List[CatalogActuator] = []
     for d in items:
-        width = float(d.get("width", 0.080))
+        diameter = float(d.get("diameter", 0.080))
         out.append(CatalogActuator(
             name=str(d["name"]),
             peak_torque=float(d["peak_torque"]),
@@ -521,8 +549,8 @@ def load_actuator_catalog_json(path: Union[str, Path]) -> List[CatalogActuator]:
             mass=float(d["mass"]),
             cost=float(d["cost"]),
             eta_gb=float(d.get("eta", 0.85)),
-            width=width,
-            length=float(d.get("length", 0.6 * width)),
+            diameter=diameter,
+            length=float(d.get("length", 0.6 * diameter)),
             Kt=(float(d["Kt"]) if "Kt" in d else None),
             R=(float(d["R"])  if "R"  in d else None),
             ratio=(float(d["ratio"]) if "ratio" in d else None),
