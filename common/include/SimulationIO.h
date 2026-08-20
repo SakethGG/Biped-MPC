@@ -69,13 +69,19 @@ template <typename T>
 struct StandingFootKinematics {
     DMat<T> Jv_W;
     DMat<T> Jw_W;
+    // Gravity/Coriolis/centrifugal generalized force for the combined leg dof, evaluated with the
+    // torso pinned at its current estimated pose (MuJoCo qfrc_bias on the standing auxiliary model).
+    // Required so the stance feedforward torque holds the legs' own weight, not just the commanded
+    // foot wrench; see MyController::writeStandingLegCommands.
+    DVec<T> bias;
     bool hasFootJacobians = false;
 
     bool matchesLayout(Eigen::Index total_leg_qd_size) const {
         return Jv_W.rows() == 6 &&
                Jv_W.cols() == total_leg_qd_size &&
                Jw_W.rows() == 6 &&
-               Jw_W.cols() == total_leg_qd_size;
+               Jw_W.cols() == total_leg_qd_size &&
+               bias.size() == total_leg_qd_size;
     }
 
     void resize(Eigen::Index total_leg_qd_size) {
@@ -85,12 +91,14 @@ struct StandingFootKinematics {
 
         Jv_W.setZero(6, total_leg_qd_size);
         Jw_W.setZero(6, total_leg_qd_size);
+        bias.setZero(total_leg_qd_size);
         hasFootJacobians = false;
     }
 
     void zero() {
         Jv_W.setZero(Jv_W.rows(), Jv_W.cols());
         Jw_W.setZero(Jw_W.rows(), Jw_W.cols());
+        bias.setZero(bias.size());
         hasFootJacobians = false;
     }
 };

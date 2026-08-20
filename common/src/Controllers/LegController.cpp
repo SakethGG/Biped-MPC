@@ -299,21 +299,16 @@ DVec<T> LegController<T>::computeStanceLegTorque(int leg) const {
     if (!datas[idx].hasFootData) {
         throw std::runtime_error("Stance leg control requires foot operational-space data");
     }
-    // if (!datas[idx].hasDynamicsData) {
-    //     throw std::runtime_error("Stance leg control requires leg joint-space dynamics data");
-    // }
+    if (!datas[idx].hasDynamicsData) {
+        throw std::runtime_error("Stance leg control requires leg joint-space dynamics data");
+    }
 
-    DVec<T> legTorque = computeStanceLegJointTorque(
+    return computeStanceLegJointTorque(
         datas[idx].Jv_W,
         datas[idx].Jw_W,
         commands[idx].forceFeedForward_W,
-        commands[idx].momentFeedForward_W);
-
-    // if (datas[idx].hasDynamicsData) {
-    //     legTorque += datas[idx].bias;
-    // }
-    // legTorque += commands[idx].tauFeedForward;
-    return legTorque;
+        commands[idx].momentFeedForward_W,
+        datas[idx].bias);
 }
 
 template <typename T>

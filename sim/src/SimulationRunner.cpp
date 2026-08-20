@@ -19,7 +19,6 @@
 #include "MujocoCheaterStateReader.h"
 #include "RobotConfig.h"
 #include "SimulationConfig.h"
-#include "SharedMemoryPublisher.h"
 #include "SimulationRunner.h"
 #include "Utilities/MatrixUtils.h"
 #include "Utilities/Timing.h"
@@ -60,53 +59,6 @@ Vec3<double> reducedBodyComVelocityWorld(const StateEstimate<double>& state,
                                          const RobotParams<double>& params) {
 	const Vec3<double> bodyBOffset_W = reducedBodyOffsetWorld(state, params);
 	return state.torsoLinVel_W + state.torsoAngVel_W.cross(bodyBOffset_W);
-}
-
-Vec3<double> worldToBodyFrame(const Quat<double>& torsoQuat_W, const Vec3<double>& value_W) {
-	return torsoQuat_W.toRotationMatrix().transpose() * value_W;
-}
-
-std::array<double, DashboardSharedMemoryPublisher::kStateDim> reducedBodyStateForDashboard(
-	const StateEstimate<double>& state,
-	const RobotParams<double>& params,
-	const UserCommand& userCommand,
-	const ControllerBodyTargetDebugState& bodyTargetDebug) {
-	const Vec2<double> rollPitch = rollPitchFromQuaternion(state.torsoQuat_W);
-	const Vec3<double> comWorld = reducedBodyComWorld(state, params);
-	const Vec3<double> comVelocityWorld = reducedBodyComVelocityWorld(state, params);
-	const Vec3<double> omegaBody = worldToBodyFrame(state.torsoQuat_W, state.torsoAngVel_W);
-	const Vec3<double> comVelocityBody =
-		worldToBodyFrame(state.torsoQuat_W, comVelocityWorld);
-	const bool targetValid = bodyTargetDebug.initialized &&
-	                        bodyTargetDebug.position_W.allFinite() &&
-	                        bodyTargetDebug.euler_W.allFinite();
-	const double targetRoll = targetValid ? bodyTargetDebug.euler_W[0]
-	                                      : std::numeric_limits<double>::quiet_NaN();
-	const double targetPitch = targetValid ? bodyTargetDebug.euler_W[1]
-	                                       : std::numeric_limits<double>::quiet_NaN();
-	const double targetHeight = targetValid ? bodyTargetDebug.position_W[2]
-	                                        : std::numeric_limits<double>::quiet_NaN();
-
-	return {
-		rollPitch[0],
-		rollPitch[1],
-		state.psi,
-		comWorld.x(),
-		comWorld.y(),
-		comWorld.z(),
-		omegaBody.x(),
-		omegaBody.y(),
-		omegaBody.z(),
-		comVelocityBody.x(),
-		comVelocityBody.y(),
-		comVelocityBody.z(),
-		userCommand.x_dot,
-		userCommand.y_dot,
-		userCommand.psi_dot,
-		targetRoll,
-		targetPitch,
-		targetHeight,
-	};
 }
 
 std::string robotTypeName(const RobotType type) {
@@ -242,10 +194,6 @@ SimulationRunner::~SimulationRunner() = default;
 
 void SimulationRunner::init() {
 	setActiveRobotType(_robot);
-	if (_dashboardPublisher == nullptr) {
-		_dashboardPublisher =
-			std::make_unique<DashboardSharedMemoryPublisher>(robotTypeName(_robot));
-	}
 	const auto& controllerConfig = getControllerConfig(_robot);
 	_keyboardCommand.setWalkingLimits(controllerConfig.userCommandFilter.xDotMax,
 	                                  controllerConfig.userCommandFilter.yDotMax,
@@ -253,20 +201,6 @@ void SimulationRunner::init() {
 	const auto& runtimeConfig = getRobotRuntimeConfig(_robot);
 	_modelPath = resolveProjectPath(runtimeConfig.modelXmlPath);
 	_footEndEffectorSource = runtimeConfig.footEndEffectorSource;
-	if (_telemetryPublisher == nullptr) {
-		_telemetryPublisher = std::make_unique<SharedMemoryTelemetryPublisher>(
-			robotTypeName(_robot),
-			_modelPath);
-	}
-
-	_telemetryInterval = 1.0 / 60.0;
-	if (const char* viewerHzEnv = std::getenv("CONVEXMPC_DASHBOARD_QPOS_HZ");
-	    viewerHzEnv != nullptr && std::string(viewerHzEnv).size() > 0) {
-		const double viewerHz = std::atof(viewerHzEnv);
-		if (std::isfinite(viewerHz) && viewerHz > 0.0) {
-			_telemetryInterval = 1.0 / viewerHz;
-		}
-	}
 
 	if (mjVERSION_HEADER != mj_version()) {
 		throw std::runtime_error("MuJoCo header/library version mismatch");
@@ -357,14 +291,6 @@ void SimulationRunner::runPhysicsLoop(bool throttleRealtime, bool syncViewer) {
 		}
 		++_iterations;
 
-		if (_telemetryPublisher != nullptr && data->time + 1e-12 >= _nextTelemetryTime) {
-			_telemetryPublisher->publish(_iterations,
-			                             data->time,
-			                             data->qpos,
-			                             static_cast<std::size_t>(model->nq));
-			_nextTelemetryTime = data->time + _telemetryInterval;
-		}
-
 		if (headlessStopTime > 0.0 && data->time - simStart >= headlessStopTime) {
 			_stopRequested = true;
 			if (syncViewer) {
@@ -443,17 +369,6 @@ void SimulationRunner::runRobotControl() {
 		// 			  << "  psi_dot: " << _userCommand.psi_dot << '\n';
 	// }
 	_robotRunner->run(_stateEstimate, _robotCommand);
-	if (_dashboardPublisher != nullptr) {
-		const UserCommand dashboardCommand = _robotRunner->dashboardUserCommand();
-		const ControllerBodyTargetDebugState bodyTargetDebug =
-			_robotRunner->dashboardBodyTargetDebugState();
-		_dashboardPublisher->publish(_iterations,
-		                             _stateEstimate.time,
-		                             reducedBodyStateForDashboard(_stateEstimate,
-		                                                          _params,
-		                                                          dashboardCommand,
-		                                                          bodyTargetDebug));
-	}
 	applyFixedJointCommands();
 	updateDebugVisualization();
 	applyRobotCommand();

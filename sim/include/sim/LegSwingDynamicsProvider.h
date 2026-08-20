@@ -57,6 +57,10 @@ private:
         mjModel* model{nullptr};
         mjData* data{nullptr};
         int torsoBodyId{-1};
+        // Free joint kept (not deleted) so qvel can be set from the state estimate each tick and
+        // qfrc_bias picks up Coriolis/centrifugal coupling from torso motion, not gravity alone.
+        int floatingQposAdr{-1};
+        int floatingQvelAdr{-1};
         FootEndEffectorSource footSource{FootEndEffectorSource::Site};
         std::vector<int> footBodyIds;
         std::vector<int> footSiteIds;

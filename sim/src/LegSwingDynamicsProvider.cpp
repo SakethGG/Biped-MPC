@@ -458,10 +458,9 @@ void LegSwingDynamicsProvider::ensureStandingAuxiliaryModel() {
     deleteElementsByType(spec, mjOBJ_SENSOR);
     deleteElementsByType(spec, mjOBJ_KEY);
 
-    if (mjsElement* floatingJoint = mjs_findElement(spec, mjOBJ_JOINT, _floatingJointName.c_str());
-        floatingJoint != nullptr) {
-        mjs_delete(spec, floatingJoint);
-    }
+    // Unlike the per-leg swing auxiliary models, the floating joint is kept here: standing needs
+    // qfrc_bias (gravity + Coriolis/centrifugal) for the leg dof with the torso moving at its real
+    // velocity, not pinned at zero velocity. See updateStandingFootJacobians.
 
     for (const auto& hand : _bindings->hands) {
         deleteBodyIfExists(
@@ -504,6 +503,20 @@ void LegSwingDynamicsProvider::ensureStandingAuxiliaryModel() {
     if (_standingAuxiliaryModel.torsoBodyId < 0) {
         destroy(_standingAuxiliaryModel);
         throw std::runtime_error("Auxiliary standing model is missing required base body");
+    }
+
+    {
+        const int floatingJointId = mj_name2id(_standingAuxiliaryModel.model,
+                                               mjOBJ_JOINT,
+                                               _floatingJointName.c_str());
+        if (floatingJointId < 0) {
+            destroy(_standingAuxiliaryModel);
+            throw std::runtime_error("Auxiliary standing model is missing the floating base joint");
+        }
+        _standingAuxiliaryModel.floatingQposAdr =
+            _standingAuxiliaryModel.model->jnt_qposadr[floatingJointId];
+        _standingAuxiliaryModel.floatingQvelAdr =
+            _standingAuxiliaryModel.model->jnt_dofadr[floatingJointId];
     }
 
     for (std::size_t leg = 0; leg < _params->legs.size(); ++leg) {
@@ -694,10 +707,26 @@ void LegSwingDynamicsProvider::updateStandingFootJacobians(StateEstimate<double>
     }
 
     auto& standingModel = _standingAuxiliaryModel;
-    assignBasePose(standingModel.model,
-                   standingModel.torsoBodyId,
-                   stateEstimate.torsoPos_W,
-                   stateEstimate.torsoQuat_W);
+
+    // Free joint qpos layout: [x y z  qw qx qy qz]. Matches assignBasePose's field order.
+    mjtNum* const floatingQpos = standingModel.data->qpos + standingModel.floatingQposAdr;
+    for (int i = 0; i < 3; ++i) {
+        floatingQpos[i] = static_cast<mjtNum>(stateEstimate.torsoPos_W[i]);
+    }
+    floatingQpos[3] = static_cast<mjtNum>(stateEstimate.torsoQuat_W.w());
+    floatingQpos[4] = static_cast<mjtNum>(stateEstimate.torsoQuat_W.x());
+    floatingQpos[5] = static_cast<mjtNum>(stateEstimate.torsoQuat_W.y());
+    floatingQpos[6] = static_cast<mjtNum>(stateEstimate.torsoQuat_W.z());
+
+    // Free joint qvel layout: [vx vy vz  wx wy wz], linear in world frame, angular in body frame
+    // (MuJoCo convention). Setting real velocity (not zero) is what lets qfrc_bias below include
+    // Coriolis/centrifugal coupling from torso motion, not just gravity.
+    const Vec3<double> angVel_B = stateEstimate.torsoQuat_W.conjugate() * stateEstimate.torsoAngVel_W;
+    mjtNum* const floatingQvel = standingModel.data->qvel + standingModel.floatingQvelAdr;
+    for (int i = 0; i < 3; ++i) {
+        floatingQvel[i] = static_cast<mjtNum>(stateEstimate.torsoLinVel_W[i]);
+        floatingQvel[3 + i] = static_cast<mjtNum>(angVel_B[i]);
+    }
 
     for (std::size_t leg = 0; leg < stateEstimate.legs.size(); ++leg) {
         auto& legState = stateEstimate.legs[leg];
@@ -723,6 +752,9 @@ void LegSwingDynamicsProvider::updateStandingFootJacobians(StateEstimate<double>
     stateEstimate.standingFeet.resize(combinedDof);
     stateEstimate.standingFeet.Jv_W.setZero(6, combinedDof);
     stateEstimate.standingFeet.Jw_W.setZero(6, combinedDof);
+    copySelectedBias(standingModel.data,
+                     standingModel.combinedQvelIndex,
+                     stateEstimate.standingFeet.bias);
 
     for (std::size_t rowBlock = 0; rowBlock < standingModel.footRowLegIndices.size(); ++rowBlock) {
         const std::size_t leg = standingModel.footRowLegIndices[rowBlock];

@@ -30,6 +30,7 @@ template <typename T>
 DVec<T> computeStanceLegJointTorque(const DMat<T>& Jv_W,
                                     const DMat<T>& Jw_W,
                                     const Vec3<T>& force_W,
-                                    const Vec3<T>& moment_W);
+                                    const Vec3<T>& moment_W,
+                                    const DVec<T>& bias);
 
 #endif  // OPERATIONAL_SPACE_DYNAMICS_H

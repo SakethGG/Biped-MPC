@@ -60,7 +60,6 @@ public:
 	virtual bool usesStandingOnlyLegDynamics() const { return false; }
 	virtual void prepareController() {}
 	virtual LegDynamicsRequest legDynamicsRequest() const { return {}; }
-	virtual UserCommand dashboardUserCommand() const { return _userCommand ? *_userCommand : UserCommand{}; }
 
 	virtual void initializeController() = 0;
 

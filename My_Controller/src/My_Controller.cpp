@@ -603,10 +603,6 @@ LocomotionFSMOutput MyController::syncLocomotionFSM() {
     return output;
 }
 
-UserCommand MyController::dashboardUserCommand() const {
-    return _filteredUserCommand;
-}
-
 void MyController::updateFilteredUserCommand(const double dt) {
     UserCommand rawCommand =
         clampUserCommand((_userCommand != nullptr) ? *_userCommand : UserCommand{});
@@ -1278,9 +1274,13 @@ void MyController::writeStandingLegCommands() {
     footMoments_W.template segment<3>(0) = -_stanceWrenchWorld.template segment<3>(6);
     footMoments_W.template segment<3>(3) = -_stanceWrenchWorld.template segment<3>(9);
 
+    //! Jacobian-transpose alone only balances the commanded foot wrench; without also adding
+    //! qfrc_bias (gravity/Coriolis for the legs, torso pinned at its current pose), the legs have
+    //! nothing countering their own weight and sag under it, independent of the MPC's wrench choice.
     const DVec<double> combinedLegTorque =
         standingFeet.Jv_W.transpose() * footForces_W +
-        standingFeet.Jw_W.transpose() * footMoments_W;
+        standingFeet.Jw_W.transpose() * footMoments_W +
+        standingFeet.bias;
 
     Eigen::Index offset = 0;
     for (std::size_t leg = 0; leg < _robotParams->legs.size(); ++leg) {

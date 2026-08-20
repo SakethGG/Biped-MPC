@@ -5,17 +5,14 @@ Every command below assumes your shell's working directory is the repo root
 
 - [Build](#build)
 - [Run the simulator (`main`)](#run-the-simulator-main)
-- [Launcher script (`launch_convexmpc.sh`)](#launcher-script-launch_convexmpcsh)
 - [Commanding a velocity from the CLI (`command_com_trajectory`)](#commanding-a-velocity-from-the-cli-command_com_trajectory)
 - [Keyboard controls (interactive GUI runs)](#keyboard-controls-interactive-gui-runs)
 - [Headless run environment variables](#headless-run-environment-variables)
-- [Dashboard / web viewer](#dashboard--web-viewer)
 - [MPC debug capture + replay](#mpc-debug-capture--replay)
 - [Plotting telemetry](#plotting-telemetry)
 - [Model generation (Tron biped)](#model-generation-tron-biped)
 - [Raw model viewer (no controller)](#raw-model-viewer-no-controller)
 - [Manual test/debug binaries](#manual-testdebug-binaries)
-- [`main_zero` (qpos-only viewer smoke test)](#main_zero-qpos-only-viewer-smoke-test)
 
 ---
 
@@ -38,7 +35,6 @@ Build a single target instead of everything:
 ```bash
 cmake --build build --target main -j
 cmake --build build --target command_com_trajectory -j
-cmake --build build --target main_zero -j
 ```
 
 ---
@@ -70,55 +66,6 @@ at startup, so change it and relaunch to switch modes.
 
 Headless runs continue until interrupted (`Ctrl+C`) unless a stop condition is set via
 `CONVEXMPC_HEADLESS_STOP_TIME` (see [Headless run environment variables](#headless-run-environment-variables)).
-
----
-
-## Launcher script (`launch_convexmpc.sh`)
-
-Wraps `main` (or `main_zero`) together with the optional Python dashboard and/or web
-viewer, and clears stale shared-memory segments before each run.
-
-```bash
-./scripts/launch_convexmpc.sh <robot> <viewer> [options]
-```
-
-Examples:
-
-```bash
-./scripts/launch_convexmpc.sh t y                       # TRON1, GUI, + dashboard if present
-./scripts/launch_convexmpc.sh m n                        # MIT Humanoid, headless, + dashboard
-./scripts/launch_convexmpc.sh --web-viewer m n            # headless + browser dashboard w/ MuJoCo WASM viewer
-./scripts/launch_convexmpc.sh --no-dashboard --web-viewer m n   # web viewer only, no dashboard
-./scripts/launch_convexmpc.sh --no-dashboard t y           # main only, no dashboard/viewer
-```
-
-Options:
-
-| Flag | Effect |
-| --- | --- |
-| `--main-bin PATH` | Override the C++ executable path (default `build/apps/main`) |
-| `--zero-command` | Launch `build/apps/main_zero` instead of `main` |
-| `--dashboard-script PATH` | Python dashboard entry point (default `dashboard/app.py`) |
-| `--dashboard-port PORT` | Dashboard port, or first free port at/above it (default `8001`) |
-| `--web-viewer` | Start the fullscreen MuJoCo WASM qpos viewer |
-| `--web-viewer-script PATH` | Web viewer entry point (default `web_viewer/app.py`) |
-| `--web-viewer-port PORT` | Web viewer port, or first free port at/above it (default `8010`) |
-| `--python PYTHON` | Interpreter used for the dashboard/web-viewer processes |
-| `--no-dashboard` | Skip the dashboard even if `dashboard/app.py` is present |
-| `-h`, `--help` | Show usage |
-
-Relevant environment variables:
-
-| Variable | Effect |
-| --- | --- |
-| `CONVEXMPC_PYTHON` | Default Python interpreter if `--python` is not passed |
-| `CONVEXMPC_DASHBOARD_SCRIPT` | Default dashboard entry point |
-| `CONVEXMPC_DASHBOARD_PORT` | Default dashboard port |
-| `CONVEXMPC_WEB_VIEWER_SCRIPT` | Default web viewer entry point |
-| `CONVEXMPC_WEB_VIEWER_PORT` | Default web viewer port |
-| `CONVEXMPC_HEADLESS_REALTIME` | Set `1` to throttle headless `main` to wall-clock time |
-| `CONVEXMPC_QPOS_SHM_NAME` | Shared-memory name for the qpos telemetry stream |
-| `CONVEXMPC_DASHBOARD_OPEN_BROWSER` | Set `0` to stop the launcher auto-opening a browser |
 
 ---
 
@@ -219,7 +166,7 @@ launch (`command_com_trajectory` sets most of these for you automatically).
 | `CONVEXMPC_DISABLE_KEYBOARD=1` | Never start the keyboard-reader thread (used automatically by `command_com_trajectory`) |
 | `CONVEXMPC_HEADLESS_REALTIME=1` | Throttle a headless run to wall-clock time instead of running as fast as possible |
 
-Example — walk MIT Humanoid headlessly to 0.5 m/s, no dashboard:
+Example — walk MIT Humanoid headlessly to 0.5 m/s:
 
 ```bash
 CONVEXMPC_HEADLESS_AUTO_WALK=1 \
@@ -245,36 +192,6 @@ Example — generate state telemetry for TRON1 headless, then plot it:
 CONVEXMPC_STATE_TELEMETRY=1 ./build/apps/main t n
 python3 plots/plot_com_state.py --show
 ```
-
-**Other**
-
-| Variable | Effect |
-| --- | --- |
-| `CONVEXMPC_SHM_NAME` | Shared-memory name for dashboard state (default `convexmpc_dashboard_state`) |
-| `CONVEXMPC_QPOS_SHM_NAME` | Shared-memory name for qpos telemetry (default `convexmpc_dashboard_qpos`) |
-| `CONVEXMPC_DASHBOARD_QPOS_HZ` | qpos publish rate to the dashboard/web viewer (default `60`) |
-| `CONVEXMPC_ZERO_COMMAND_HZ` | Publish rate for `main_zero` (default `60`) |
-
----
-
-## Dashboard / web viewer
-
-Usually started for you by `launch_convexmpc.sh`; run manually if needed.
-
-```bash
-# Telemetry-only dashboard (graphs + status, no 3D view)
-python dashboard/app.py --host 127.0.0.1 --port 8001
-
-# Standalone MuJoCo WASM qpos viewer (npm install once first)
-cd web_viewer && npm install && cd ..
-./scripts/launch_convexmpc.sh --no-dashboard --web-viewer m n
-```
-
-Dashboard flags: `--host` (default `127.0.0.1`), `--port` (default `8000`),
-`--shared-memory` (default `convexmpc_dashboard_state`), `--no-browser`.
-
-See [docs/web_dashboard.md](docs/web_dashboard.md) for the full integrated
-telemetry + WASM-viewer setup.
 
 ---
 
@@ -415,19 +332,4 @@ cmake --build build --target scene_posture_clearance
 ./build/test/scene_posture/scene_posture_clearance --xml models/mit_humanoid/scene.xml --key nominal_stance
 ./build/test/scene_posture/scene_posture_clearance --xml models/unitree_robots/g1/scene_23dof.xml \
     --body pelvis --site left_foot_contact_site --site right_foot_contact_site --key nominal_stance
-```
-
----
-
-## `main_zero` (qpos-only viewer smoke test)
-
-Publishes the MIT Humanoid's nominal `qpos` over shared memory at a fixed rate with no
-controller and no native viewer attached — a minimal smoke test for the web viewer/dashboard
-pipeline.
-
-```bash
-cmake --build build --target main_zero -j
-./build/apps/main_zero        # defaults to MIT Humanoid ('m' is currently the only supported id)
-CONVEXMPC_ZERO_COMMAND_HZ=30 ./build/apps/main_zero
-./scripts/launch_convexmpc.sh --zero-command --no-dashboard --web-viewer m n   # via the launcher
 ```

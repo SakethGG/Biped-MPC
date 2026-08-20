@@ -10,8 +10,6 @@
 
 #include "DebugVisualization.h"
 #include "StateEstimator/StateEstimator.h"
-#include "SharedMemoryPublisher.h"
-#include "SharedMemoryTelemetryPublisher.h"
 #include "LegSwingDynamicsProvider.h"
 #include "MujocoRobotBindings.h"
 #include "main_thread.h"
@@ -68,8 +66,6 @@ private:
 	RobotCommand<double> _robotCommand;
 	std::unique_ptr<RobotRunner> _robotRunner = nullptr;
 	std::unique_ptr<LegSwingDynamicsProvider> _legSwingDynamicsProvider = nullptr;
-	std::unique_ptr<DashboardSharedMemoryPublisher> _dashboardPublisher = nullptr;
-    std::unique_ptr<SharedMemoryTelemetryPublisher> _telemetryPublisher = nullptr;
 	std::vector<DebugMocapBinding> _debugMocapBindings;
 	bool _firstControllerRun = true;
 	bool _keyboardCommandStartAttempted{false};
@@ -93,8 +89,6 @@ private:
     double _stateTelemetryInterval{0.01};
     double _nextStateTelemetryTime{0.0};
     bool _stateTelemetryInitialized{false};
-    double _telemetryInterval{0.05};
-    double _nextTelemetryTime{0.0};
     bool _headlessScheduleAnnounced{false};
     profiling::TimingStats _mjStepTime;
 };

@@ -87,10 +87,14 @@ template <typename T>
 DVec<T> computeStanceLegJointTorque(const DMat<T>& Jv_W,
                                     const DMat<T>& Jw_W,
                                     const Vec3<T>& force_W,
-                                    const Vec3<T>& moment_W) {
+                                    const Vec3<T>& moment_W,
+                                    const DVec<T>& bias) {
     validateStanceInputs(Jv_W, Jw_W);
+    if (bias.size() != Jv_W.cols()) {
+        throw std::invalid_argument("Stance leg bias does not match Jacobian column count");
+    }
 
-    return Jv_W.transpose() * force_W + Jw_W.transpose() * moment_W;
+    return Jv_W.transpose() * force_W + Jw_W.transpose() * moment_W + bias;
 }
 
 template DMat<float> computeApparentInertia(const DMat<float>&, const DMat<float>&);
@@ -133,8 +137,10 @@ template DVec<double> computeSwingLegJointTorque(const DMat<double>&,
 template DVec<float> computeStanceLegJointTorque(const DMat<float>&,
                                                  const DMat<float>&,
                                                  const Vec3<float>&,
-                                                 const Vec3<float>&);
+                                                 const Vec3<float>&,
+                                                 const DVec<float>&);
 template DVec<double> computeStanceLegJointTorque(const DMat<double>&,
                                                   const DMat<double>&,
                                                   const Vec3<double>&,
-                                                  const Vec3<double>&);
+                                                  const Vec3<double>&,
+                                                  const DVec<double>&);
