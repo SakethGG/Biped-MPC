@@ -151,3 +151,26 @@ For a thick-walled hollow cuboid shell with outer dimensions \(a \times b \times
 and 2. moment of inertia of a cuboid basically a battery pacy which has a mass of "TRUNK_EXTRA_MASS" 
 
 this shum should be passed to the xml file
+
+
+
+for quadruped:
+
+
+# thigh_{SIDE}_Link, relative to knee_{SIDE}_act:
+x_thigh = clearance_kneeAct2thigh_x
+y_thigh = -+(thickness_knee/2 + THIGH_BOX_HALF[1] + clearance_kneeAct2thigh_y)   # sign opposite y_knee's (tangent point sits back toward the hip side, not out past the knee) -- HALF extent here, not full
+z_thigh = clearance_kneeAct2thigh_z
+
+# ankle_{SIDE}_act, relative to shank_{SIDE}_Link -- layered on top of the
+# fixed-direction shank_length*SHANK_DIR scaling, see "Thigh, shank, ankle" below:
+x_ankleAct = clearance_shank2ankleAct_x
+y_ankleAct = clearance_shank2ankleAct_y
+z_ankleAct = clearance_shank2ankleAct_z
+
+
+
+thigh link relative to knee actuator
+x_thigh = clearance_kneeAct2thigh_x
+y_thigh = (thickness_knee/2 + thickness of thigh link + clearance_kneeAct2thigh_y)   
+z_thigh = clearance_kneeAct2thigh_z
