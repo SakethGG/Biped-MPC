@@ -315,13 +315,12 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
     L = _cluster_layout(side, spec, act_abad, act_hip, act_knee)
     abad_axis = "-1 0 0" if side == "R" else "1 0 0"
 
-    # thigh: a single cuboid, pointing along THIGH_BOX_DIR, offset from
-    # thigh_Link's own origin by the knee actuator's radius so it doesn't
-    # visually overlap knee_{side}_act's own cylinder geometry. Its LENGTH is
-    # LINK_BOX_LENGTH_FRAC of the knee-radius-offset -> shank-attachment
-    # span, so it stops short of the shank joint by design (no visual
-    # contact) rather than reaching it exactly.
-    thigh_available = spec.thigh_length 
+    # thigh: a single cuboid, pointing along THIGH_BOX_DIR. Its LENGTH is
+    # LINK_BOX_LENGTH_FRAC of the full hip-to-knee span, but it's CENTERED on
+    # the full span's midpoint -- so it stops short of both the hip and knee
+    # joints by equal margins, rather than starting flush at the hip and
+    # only leaving a gap at the knee end.
+    thigh_available = spec.thigh_length
     if thigh_available <= 0:
         raise ValueError(
             f"thigh_length ({spec.thigh_length:.4f} m) is too short to clear "
@@ -329,8 +328,7 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
             "box would have zero or negative length. Increase thigh_length."
         )
     box_half_len = (LINK_BOX_LENGTH_FRAC * thigh_available) / 2.0
-    # box_center_local = (L["r_knee"] + box_half_len) * THIGH_BOX_DIR
-    box_center_local = (box_half_len) * THIGH_BOX_DIR
+    box_center_local = (thigh_available / 2.0) * THIGH_BOX_DIR
     box_quat = _vec3(THIGH_BOX_QUAT)
     box_size = _vec(THIGH_BOX_HALF[0], THIGH_BOX_HALF[1], box_half_len)
 
@@ -338,11 +336,12 @@ def _leg_xml(side: str, spec, act_abad, act_hip, act_knee, act_ankle) -> str:
     shank_pos_rel = f"{_fmt(shank_pos[0])} 0.0 {_fmt(shank_pos[1])}"
 
     # shank box: same LINK_BOX_LENGTH_FRAC convention -- hangs straight down
-    # (-z) from shank_{side}_Link's own origin, the same axis ankle_pos below
-    # is measured along, stopping short of the ankle joint.
+    # (-z) from shank_{side}_Link's own origin, but CENTERED on the full
+    # knee-to-ankle span's midpoint (half of spec.shank_length), so it stops
+    # short of both the knee and ankle joints by equal margins.
     shank_half_len = (LINK_BOX_LENGTH_FRAC * spec.shank_length) / 2.0
     shank_box_size = _vec(SHANK_BOX_HALF[0], SHANK_BOX_HALF[1], shank_half_len)
-    shank_box_pos = f"0.0 0.0 {_fmt(-shank_half_len)}"
+    shank_box_pos = f"0.0 0.0 {_fmt(-spec.shank_length / 2.0)}"
 
     # ankle_{side}_act sits shank_length straight down (-z) from
     # shank_{side}_Link's own origin, plus a small clearance offset.
